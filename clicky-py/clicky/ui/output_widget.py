@@ -6,7 +6,6 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QPlainTextEdit, QVBoxLayout, QWidget
 
 from clicky.design_system import DS
-from clicky.ui.win32_transparency import apply_win32_transparency
 
 
 class OutputWidget(QWidget):
@@ -23,12 +22,11 @@ class OutputWidget(QWidget):
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setObjectName("OutputWidget")
 
         self.setStyleSheet(f"""
-            QWidget {{
+            QWidget#OutputWidget {{
                 background-color: {DS.Colors.panel_bg};
                 border-radius: 8px;
                 border: 1px solid {DS.Colors.border};
@@ -52,10 +50,6 @@ class OutputWidget(QWidget):
         self._geom_anim.setDuration(self.ANIM_DURATION_MS)
         self._geom_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._geom_anim.finished.connect(lambda: self.setFixedSize(self.WIDTH, self.HEIGHT))
-
-    def showEvent(self, event) -> None:  # noqa: N802
-        super().showEvent(event)
-        apply_win32_transparency(int(self.winId()))
 
     def show_animated(self, anchor_x: int, anchor_y: int) -> None:
         """Animate the widget growing from (anchor_x, anchor_y) down-right."""

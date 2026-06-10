@@ -19,6 +19,10 @@ class CommandRouter:
         """Register a command. name should be lowercase without the slash."""
         self._handlers[name.lower().lstrip("/")] = handler
 
+    def command_names(self) -> list[str]:
+        """Return sorted list of registered command names (without the leading slash)."""
+        return sorted(self._handlers.keys())
+
     def dispatch(self, text: str, ctx: CommandContext) -> bool:
         """Return True if text was a slash command (handled), False otherwise."""
         text = text.strip()

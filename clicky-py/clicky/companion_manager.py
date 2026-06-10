@@ -32,6 +32,7 @@ from clicky.mic_capture import MicCapture
 from clicky.point_mapper import map_point_to_screen
 from clicky.point_parser import parse_point_tag
 from clicky.prompts import build_system_prompt
+from clicky.step_parser import Step, parse_steps
 from clicky.screen_capture import ScreenshotImage
 from clicky.state import VoiceState
 
@@ -69,6 +70,7 @@ class CompanionManager(QObject):
     final_transcript = Signal(str)
     response_delta = Signal(str)
     response_complete = Signal(str)
+    step_text = Signal(str)  # text for the current step (drives output widget in step mode)
     success_turn_completed = Signal()
     error = Signal(str)
 
@@ -105,6 +107,8 @@ class CompanionManager(QObject):
         self._current_screenshots: list[ScreenshotImage] = []
         self._speak_task: asyncio.Task[None] | None = None
         self._context_addendum: str = ""
+        self._steps: list[Step] = []
+        self._step_index: int = 0
 
         # PCM deque bridge — same pattern as app.py.  Replaced on every
         # hotkey-press cycle so a stale generator cannot leak chunks.
@@ -142,6 +146,42 @@ class CompanionManager(QObject):
     def set_context_addendum(self, text: str) -> None:
         """Prepend extra context to the next turn's system prompt (one-shot)."""
         self._context_addendum = text
+
+    def update_config(self, cfg: "Config") -> None:
+        """Hot-swap config (e.g. when settings are saved without a full restart)."""
+        self._config = cfg
+        if not cfg.tts_enabled:
+            from clicky.clients.tts_null import NullTTSClient
+            self._tts.stop()
+            self._tts = NullTTSClient(parent=self)
+
+    def advance_step(self) -> None:
+        """Advance to the next step. Called when the user's cursor reaches a POINT target."""
+        if self._cancel_flag:
+            return
+        # Cancel in-flight TTS for the current step before starting the next one.
+        if self._speak_task is not None and not self._speak_task.done():
+            self._speak_task.cancel()
+        self._step_index += 1
+        if self._step_index >= len(self._steps):
+            self._set_state(VoiceState.IDLE)
+            return
+        self._show_step(self._step_index)
+
+    def _show_step(self, index: int) -> None:
+        step = self._steps[index]
+        self.step_text.emit(step.text)
+        if step.point is not None:
+            coords = map_point_to_screen(step.point, self._current_screenshots)
+            if coords is not None:
+                self._panel_visibility_controller.fly_to(coords[0], coords[1])
+                logger.info("step %d POINT: (%d, %d) label=%s", index, coords[0], coords[1], step.point.label)
+        else:
+            # Final step — go idle after TTS or brief dwell.
+            if self._config.tts_enabled:
+                self._speak_task = asyncio.ensure_future(self._speak(step.text))
+            else:
+                asyncio.ensure_future(self._delayed_idle(0.4))
 
     def handle_text_input(self, text: str) -> None:
         """Inject typed text directly into the turn pipeline (skip mic/STT)."""
@@ -380,25 +420,9 @@ class CompanionManager(QObject):
                 self.response_complete.emit(full_text)
                 self.success_turn_completed.emit()
 
-                # Parse POINT tag — strip from TTS text, fly companion if found.
-                spoken_text, point_tag = parse_point_tag(full_text)
-                if point_tag is not None:
-                    coords = map_point_to_screen(point_tag, self._current_screenshots)
-                    if coords is not None:
-                        self._panel_visibility_controller.fly_to(coords[0], coords[1])
-                        logger.info(
-                            "POINT: (%d, %d) label=%s",
-                            coords[0], coords[1], point_tag.label,
-                        )
-
-                if self._config.tts_enabled:
-                    self._speak_task = asyncio.ensure_future(self._speak(spoken_text))
-                else:
-                    if point_tag is not None:
-                        # Delay IDLE until fly animation completes (400ms) + brief dwell (250ms)
-                        asyncio.ensure_future(self._delayed_idle(0.65))
-                    else:
-                        self._set_state(VoiceState.IDLE)
+                self._steps = parse_steps(full_text)
+                self._step_index = 0
+                self._show_step(0)
 
         except asyncio.CancelledError:
             logger.debug("turn cancelled")

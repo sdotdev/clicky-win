@@ -118,6 +118,7 @@ def run() -> int:
 
     router = CommandRouter()
     router.register("tasks", handle_tasks)
+    text_input.set_commands(router.command_names())
 
     # Apply lerp factor from config.
     if result.config is not None:
@@ -211,10 +212,9 @@ def run() -> int:
 
         mgr.state_changed.connect(companion.set_state)
 
-        from clicky.point_parser import parse_point_tag as _parse_pt
-
         mgr.response_delta.connect(output_widget.append_delta)
-        mgr.response_complete.connect(lambda text: output_widget.set_text(_parse_pt(text)[0]))
+        mgr.step_text.connect(output_widget.set_text)
+        companion.proximity_reached.connect(mgr.advance_step)
 
         def _on_state_changed_output(state: VoiceState) -> None:
             if state == VoiceState.RESPONDING:
@@ -303,6 +303,8 @@ def run() -> int:
             return
         companion.set_lerp_factor(new_config.lerp_factor)
         shake_detector.set_sensitivity(new_config.shake_sensitivity)
+        if _manager[0] is not None:
+            _manager[0].update_config(new_config)
         tray_icon.showMessage("ClickyWin", "General settings saved.")
 
     settings_window.settings_saved.connect(_on_settings_saved)

@@ -13,6 +13,7 @@ from PySide6.QtCore import (
     QRectF,
     Qt,
     QTimer,
+    Signal,
 )
 from PySide6.QtGui import QColor, QCursor, QPainter, QPolygonF, QRadialGradient
 from PySide6.QtWidgets import QApplication, QWidget
@@ -28,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 class CompanionWidget(QWidget):
     """Small cursor-following overlay. Shows a blue triangle when idle."""
+
+    proximity_reached = Signal()  # emitted when cursor enters PROXIMITY_PX of a fly_to target
 
     # Dimensions -- enough for triangle + future waveform expansion
     WIDGET_W = 120
@@ -420,6 +423,7 @@ class CompanionWidget(QWidget):
             centre_y = int(self._lerp_y) + self.WIDGET_H // 2
             if (cx - centre_x) ** 2 + (cy - centre_y) ** 2 <= self.PROXIMITY_PX ** 2:
                 self._waiting_for_proximity = False
+                self.proximity_reached.emit()
                 self.return_to_cursor()
             return  # stay frozen while waiting
 

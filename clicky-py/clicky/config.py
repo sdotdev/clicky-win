@@ -32,6 +32,7 @@ class Config:
     hotkey: str
     default_model: str
     log_level: str
+    lerp_factor: float
     knowledge_dir: Path | None
 
     @classmethod
@@ -72,6 +73,9 @@ class Config:
                 f"log_level must be one of {sorted(ALLOWED_LOG_LEVELS)}, got {log_level!r}"
             )
 
+        lerp_factor_raw = data.get("lerp_factor", 0.15)
+        lerp_factor = float(max(0.01, min(1.0, lerp_factor_raw)))
+
         knowledge_dir_raw = data.get("knowledge_dir")
         if isinstance(knowledge_dir_raw, str) and knowledge_dir_raw.strip():
             knowledge_dir = Path(knowledge_dir_raw)
@@ -89,6 +93,7 @@ class Config:
             hotkey=hotkey,
             default_model=default_model,
             log_level=log_level,
+            lerp_factor=lerp_factor,
             knowledge_dir=knowledge_dir,
         )
 

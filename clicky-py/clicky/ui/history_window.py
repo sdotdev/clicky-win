@@ -13,24 +13,11 @@ from clicky.design_system import DS
 logger = logging.getLogger(__name__)
 
 
-class HistoryWindow(QWidget):
-    """Scrollable conversation history — live-updates as turns come in."""
-
-    MIN_W = 450
-    MIN_H = 350
+class HistoryWidget(QWidget):
+    """Scrollable conversation history widget — contains all text editor logic."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("ClickyWin — History")
-        self.setMinimumSize(self.MIN_W, self.MIN_H)
-        self.resize(500, 500)
-        # Normal window, not overlay
-        self.setWindowFlags(
-            Qt.WindowType.Window | Qt.WindowType.WindowCloseButtonHint
-        )
-        self.setStyleSheet(
-            f"background-color: {DS.Colors.panel_bg};"
-        )
 
         self._text = QTextEdit(self)
         self._text.setReadOnly(True)
@@ -151,3 +138,51 @@ class HistoryWindow(QWidget):
         """Show an error line in red."""
         self._append_label("\n⚠ Error: ", DS.Colors.companion_error)
         self._append_text(msg + "\n", DS.Colors.error_red)
+
+
+class HistoryWindow(QWidget):
+    """Thin wrapper around HistoryWidget — standalone window with title/sizing."""
+
+    MIN_W = 450
+    MIN_H = 350
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("ClickyWin — History")
+        self.setMinimumSize(self.MIN_W, self.MIN_H)
+        self.resize(500, 500)
+        # Normal window, not overlay
+        self.setWindowFlags(
+            Qt.WindowType.Window | Qt.WindowType.WindowCloseButtonHint
+        )
+        self.setStyleSheet(
+            f"background-color: {DS.Colors.panel_bg};"
+        )
+
+        self._widget = HistoryWidget()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._widget)
+
+    # --- Public slot delegation ---
+
+    @Slot(str)
+    def append_interim(self, text: str) -> None:
+        self._widget.append_interim(text)
+
+    @Slot(str)
+    def set_final(self, text: str) -> None:
+        self._widget.set_final(text)
+
+    @Slot(str)
+    def append_delta(self, text: str) -> None:
+        self._widget.append_delta(text)
+
+    @Slot()
+    def commit_turn(self, _text: str = "") -> None:
+        self._widget.commit_turn(_text)
+
+    @Slot(str)
+    def show_error(self, msg: str) -> None:
+        self._widget.show_error(msg)

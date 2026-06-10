@@ -1,7 +1,7 @@
 """Floating text input widget for keyboard-driven queries."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QFont, QKeyEvent
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QWidget
 
@@ -16,6 +16,7 @@ class TextInputWidget(QWidget):
 
     WIDTH = 320
     HEIGHT = 36
+    ANIM_DURATION_MS = 280
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -25,7 +26,7 @@ class TextInputWidget(QWidget):
             | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
-        self.setFixedSize(self.WIDTH, self.HEIGHT)
+        # Do NOT setFixedSize here — show_animated needs to override size constraints.
 
         self._edit = QLineEdit(self)
         self._edit.setPlaceholderText("Type your query…")
@@ -50,11 +51,39 @@ class TextInputWidget(QWidget):
             }}
         """)
 
+        self._geom_anim = QPropertyAnimation(self, b"geometry")
+        self._geom_anim.setDuration(self.ANIM_DURATION_MS)
+        self._geom_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._geom_anim.finished.connect(self._on_anim_finished)
+        self._anchor_x = 0
+        self._anchor_y = 0
+
     def show_near(self, x: int, y: int) -> None:
-        """Show the widget near the given screen coordinates."""
+        """Show the widget near the given screen coordinates (no animation)."""
         self._edit.clear()
+        self.setFixedSize(self.WIDTH, self.HEIGHT)
         self.move(x, y)
         self.show()
+        self.activateWindow()
+        self._edit.setFocus()
+
+    def show_animated(self, anchor_x: int, anchor_y: int) -> None:
+        """Animate the widget growing from (anchor_x, anchor_y) down-right."""
+        self._anchor_x = anchor_x
+        self._anchor_y = anchor_y
+        self._edit.clear()
+        # Release fixed-size constraints so the geometry animation can resize freely.
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(16777215, 16777215)
+        self._geom_anim.stop()
+        self.setGeometry(QRect(anchor_x, anchor_y, 1, 1))
+        self.show()
+        self._geom_anim.setStartValue(QRect(anchor_x, anchor_y, 1, 1))
+        self._geom_anim.setEndValue(QRect(anchor_x, anchor_y, self.WIDTH, self.HEIGHT))
+        self._geom_anim.start()
+
+    def _on_anim_finished(self) -> None:
+        self.setFixedSize(self.WIDTH, self.HEIGHT)
         self.activateWindow()
         self._edit.setFocus()
 

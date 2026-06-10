@@ -1,20 +1,12 @@
 # ClickyWin configuration
-# Edit this file to point ClickyWin at your own Cloudflare Worker deployment.
-
-# Your deployed Cloudflare Worker URL. Deploy the worker/ folder via
-# `wrangler deploy` and paste the resulting URL here. See README.md.
-worker_url = "https://clicky-win-proxy.your-subdomain.workers.dev"
+# Default: all-local providers (Ollama + faster-whisper + Kokoro).
+# Switch to cloud providers by changing the [brain]/[ears]/[mouth] sections
+# and setting worker_url to your Cloudflare Worker URL.
 
 # Push-to-talk binding. Options: "ctrl+alt" (default), "right_ctrl"
-# (useful for international keyboards where Ctrl+Alt conflicts with AltGr).
 hotkey = "ctrl+alt"
 
-# Default Claude model. Options: "claude-sonnet-4-6" (fast, cheap),
-# "claude-opus-4-6" (slower, smarter). Switchable at runtime via the
-# model picker in the panel.
-default_model = "claude-sonnet-4-6"
-
-# Log verbosity. Options: "DEBUG", "INFO", "WARNING", "ERROR".
+# Log verbosity. Options: "DEBUG", "INFO", "WARNING", "ERROR"
 log_level = "INFO"
 
 # How smoothly the companion follows your cursor. 1.0 = instant snap, 0.05 = heavy lag.
@@ -23,3 +15,64 @@ lerp_factor = 0.15
 # Path to knowledge base folder. Each subfolder = one app's KB.
 # Default: %APPDATA%/ClickyWin/knowledge/
 # knowledge_dir = "C:/path/to/knowledge"
+
+# ---------------------------------------------------------------------------
+# Brain — vision + reasoning (what understands your question + screenshots)
+# ---------------------------------------------------------------------------
+[brain]
+# "ollama"           — local Ollama instance (recommended, free, private)
+# "gemini"           — Google Gemini API (cloud, requires api_key or GOOGLE_API_KEY env var)
+# "anthropic_worker" — Claude via your Cloudflare Worker (requires worker_url)
+provider = "ollama"
+
+# Model identifier. Depends on provider:
+#   ollama:  "qwen2.5vl:7b" (run: ollama pull qwen2.5vl:7b)
+#   gemini:  "gemini-2.0-flash" | "gemini-2.5-flash" | "gemini-2.5-pro"
+#   worker:  any Claude model slug (e.g. "claude-sonnet-4-6")
+model = "qwen2.5vl:7b"
+
+# Ollama API base URL (change if you run Ollama on a different port/host)
+base_url = "http://localhost:11434/v1"
+
+# Google AI API key — required for provider = "gemini".
+# Alternatively set GOOGLE_API_KEY or GEMINI_API_KEY environment variable (preferred).
+# Get a key at: https://aistudio.google.com/apikey
+# api_key = "AIza..."
+
+# ---------------------------------------------------------------------------
+# Ears — speech-to-text (what transcribes your voice)
+# ---------------------------------------------------------------------------
+[ears]
+# "faster_whisper" runs locally on your GPU/CPU (recommended, free, private)
+# "assemblyai_worker" uses AssemblyAI via your Cloudflare Worker (requires worker_url)
+provider = "faster_whisper"
+
+# Whisper model variant. "distil-large-v3" is fastest/best balance.
+# Other options: "large-v3", "medium", "small", "base"
+model = "distil-large-v3"
+
+# Compute device. "cuda" requires an NVIDIA GPU + CUDA DLLs (see README).
+# Use "cpu" if you don't have a GPU (slower but works everywhere).
+device = "cuda"
+
+# Precision. "float16" for CUDA (fast), "int8" for CPU (efficient).
+compute_type = "float16"
+
+# ---------------------------------------------------------------------------
+# Mouth — text-to-speech (what speaks the response back to you)
+# ---------------------------------------------------------------------------
+[mouth]
+# "kokoro" runs locally (~300MB download, requires espeak-ng on Windows)
+# "elevenlabs_worker" uses ElevenLabs via your Cloudflare Worker (requires worker_url)
+provider = "kokoro"
+
+# Kokoro voice. Built-in options include: af_heart, af_bella, am_adam, am_michael,
+# bf_emma, bm_george. See: https://huggingface.co/hexgrad/Kokoro-82M
+voice = "af_heart"
+
+# ---------------------------------------------------------------------------
+# Cloud worker (only needed if any provider above is set to a *_worker value)
+# ---------------------------------------------------------------------------
+# Uncomment and set this when using anthropic_worker, assemblyai_worker,
+# or elevenlabs_worker. Deploy the worker/ folder via `wrangler deploy`.
+# worker_url = "https://clicky-win-proxy.your-subdomain.workers.dev"

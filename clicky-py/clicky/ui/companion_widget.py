@@ -59,6 +59,10 @@ class CompanionWidget(QWidget):
     # Active triangle
     ACTIVE_TRIANGLE_SIZE = 27
 
+    # Proximity radius (px from widget centre) — cursor must enter this circle before
+    # the companion returns to tracking after a fly_to / drag_open.
+    PROXIMITY_PX = 80
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowFlags(
@@ -77,6 +81,8 @@ class CompanionWidget(QWidget):
         self._prev_y = 0
         self._lerp_x: float = 0.0
         self._lerp_y: float = 0.0
+        self._target_x: float = 0.0
+        self._target_y: float = 0.0
         self._lerp_factor: float = 0.15
 
         self._state = VoiceState.IDLE
@@ -86,6 +92,7 @@ class CompanionWidget(QWidget):
         self._opacity = self.IDLE_OPACITY
 
         self._frozen = False  # freeze cursor tracking during RESPONDING
+        self._waiting_for_proximity = False  # waiting for cursor to approach after fly
 
         # Animation for waveform expand/contract
         self._scale_anim = QPropertyAnimation(self, b"anim_scale")
@@ -165,6 +172,7 @@ class CompanionWidget(QWidget):
             self._fly_target = None
             self._fly_returning = False
             self._frozen = False
+            self._waiting_for_proximity = False
             self._stop_pulse()
             self._animate_expand()
         elif state == VoiceState.PROCESSING:
@@ -282,6 +290,7 @@ class CompanionWidget(QWidget):
         self._pulse_anim.stop()
         self._pulse_scale = 1.0
         self._pulse_color = None
+        self._pulse_color = None
 
     # ------------------------------------------------------------------
     # Visibility
@@ -375,6 +384,19 @@ class CompanionWidget(QWidget):
         self._fly_timer.start()
         logger.info("fly_to: (%d, %d)", x, y)
 
+    def drag_open(self, screen_x: int, screen_y: int) -> None:
+        """Animate companion to (screen_x, screen_y) then auto-return — used for text box open."""
+        self._frozen = True
+        self._fly_target = (screen_x, screen_y)
+        self._fly_returning = False
+
+        pos = self.pos()
+        self._fly_start = (float(pos.x()), float(pos.y()))
+        self._fly_end = (float(screen_x), float(screen_y))
+        self._fly_progress = 0.0
+        self._fly_duration_ms = 280
+        self._fly_timer.start()
+
     def return_to_cursor(self) -> None:
         """Smoothly animate back to cursor position, then resume tracking."""
         if self._fly_target is None:
@@ -415,6 +437,8 @@ class CompanionWidget(QWidget):
         ex, ey = self._fly_end
         cur_x = sx + (ex - sx) * eased
         cur_y = sy + (ey - sy) * eased
+        self._lerp_x = cur_x
+        self._lerp_y = cur_y
         self.move(int(cur_x), int(cur_y))
 
         if self._fly_progress >= 1.0:
@@ -425,6 +449,9 @@ class CompanionWidget(QWidget):
                 self._prev_x = 0
                 self._prev_y = 0
                 self._track_cursor(force=True)
+            elif self._fly_target is not None:
+                # Reached destination — wait for cursor to approach before returning
+                self._waiting_for_proximity = True
 
     def set_lerp_factor(self, factor: float) -> None:
         self._lerp_factor = max(0.01, min(1.0, factor))
@@ -435,38 +462,50 @@ class CompanionWidget(QWidget):
 
     def _track_cursor(self, force: bool = False) -> None:
         pos = QCursor.pos()  # Global screen coordinates
+
+        if self._waiting_for_proximity:
+            cx, cy = pos.x(), pos.y()
+            centre_x = int(self._lerp_x) + self.WIDGET_W // 2
+            centre_y = int(self._lerp_y) + self.WIDGET_H // 2
+            if (cx - centre_x) ** 2 + (cy - centre_y) ** 2 <= self.PROXIMITY_PX ** 2:
+                self._waiting_for_proximity = False
+                self.return_to_cursor()
+            return  # stay frozen while waiting
+
         if self._frozen:
             return
         cx, cy = pos.x(), pos.y()
 
-        if not force and not should_update(self._prev_x, self._prev_y, cx, cy):
-            return
-
-        screen = QApplication.screenAt(pos)
-        if screen is None:
-            return
-
-        geo = screen.geometry()
-        screen_rect = (geo.x(), geo.y(), geo.width(), geo.height())
-
-        placement = compute_position(
-            cx,
-            cy,
-            screen_rect,
-            companion_size=(self.WIDGET_W, self.WIDGET_H),
-            offset=self.OFFSET,
-            edge_margin=self.EDGE_MARGIN,
-        )
+        # Recompute target only when the cursor actually moved (or on forced snap).
+        if force or should_update(self._prev_x, self._prev_y, cx, cy):
+            screen = QApplication.screenAt(pos)
+            if screen is None:
+                return
+            geo = screen.geometry()
+            placement = compute_position(
+                cx,
+                cy,
+                (geo.x(), geo.y(), geo.width(), geo.height()),
+                companion_size=(self.WIDGET_W, self.WIDGET_H),
+                offset=self.OFFSET,
+                edge_margin=self.EDGE_MARGIN,
+            )
+            if force:
+                self._lerp_x = float(placement.x)
+                self._lerp_y = float(placement.y)
+            self._target_x = float(placement.x)
+            self._target_y = float(placement.y)
+            self._prev_x = cx
+            self._prev_y = cy
 
         if force:
-            self._lerp_x = float(placement.x)
-            self._lerp_y = float(placement.y)
-        else:
-            self._lerp_x += (placement.x - self._lerp_x) * self._lerp_factor
-            self._lerp_y += (placement.y - self._lerp_y) * self._lerp_factor
+            return
+
+        # Always lerp toward target so the companion glides to rest even after
+        # the mouse stops moving.
+        self._lerp_x += (self._target_x - self._lerp_x) * self._lerp_factor
+        self._lerp_y += (self._target_y - self._lerp_y) * self._lerp_factor
         self.move(int(self._lerp_x), int(self._lerp_y))
-        self._prev_x = cx
-        self._prev_y = cy
 
     # ------------------------------------------------------------------
     # Painting

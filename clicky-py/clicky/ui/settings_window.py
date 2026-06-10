@@ -7,7 +7,7 @@ import tomllib
 from pathlib import Path
 
 import tomli_w
-from PySide6.QtCore import QObject, Qt, Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -30,30 +30,11 @@ from PySide6.QtWidgets import (
 
 from clicky.design_system import DS
 from clicky.ui.history_window import HistoryWidget
+from clicky.ui.log_handler import QtLogHandler
+
+__all__ = ["QtLogHandler", "SettingsWindow"]
 
 logger = logging.getLogger(__name__)
-
-
-class QtLogHandler(QObject, logging.Handler):
-    """logging.Handler that emits each formatted record as a Qt signal."""
-
-    log_record = Signal(str)
-
-    def __init__(self, parent=None):
-        QObject.__init__(self, parent)
-        logging.Handler.__init__(self)
-        self.setFormatter(
-            logging.Formatter(
-                "%(asctime)s %(levelname)-8s %(name)s — %(message)s",
-                datefmt="%H:%M:%S",
-            )
-        )
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            self.log_record.emit(self.format(record))
-        except Exception:
-            self.handleError(record)
 
 
 class SettingsWindow(QMainWindow):

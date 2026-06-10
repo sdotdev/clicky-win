@@ -28,6 +28,6 @@ def map_point_to_screen(
     else:
         shot = screenshots[0]  # cursor's screen (first in list)
 
-    real_x = shot.monitor_left + int(tag.x / shot.scale)
-    real_y = shot.monitor_top + int(tag.y / shot.scale)
+    real_x = int(shot.monitor_left / shot.dpi_scale) + int(tag.x / shot.scale / shot.dpi_scale)
+    real_y = int(shot.monitor_top  / shot.dpi_scale) + int(tag.y / shot.scale / shot.dpi_scale)
     return (real_x, real_y)

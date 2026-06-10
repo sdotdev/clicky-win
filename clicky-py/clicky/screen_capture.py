@@ -25,6 +25,7 @@ class ScreenshotImage:
     scale: float           # downscale ratio (e.g. 0.667 for 1920→1280). 1.0 if no downscale.
     monitor_left: int      # global X origin of this monitor
     monitor_top: int       # global Y origin of this monitor
+    dpi_scale: float = 1.0  # device pixel ratio from Qt (1.5 on 150%-scaled monitor)
 
 
 def compose_screen_label(
@@ -53,7 +54,7 @@ def _cursor_in_monitor(cx: int, cy: int, monitor: dict) -> bool:
     )
 
 
-def capture_all() -> list[ScreenshotImage]:
+def capture_all(qt_screens: list | None = None) -> list[ScreenshotImage]:
     """Capture every monitor, returning the cursor screen first.
 
     Each capture is downscaled so the long edge is at most 1280 px and
@@ -77,6 +78,18 @@ def capture_all() -> list[ScreenshotImage]:
         total = len(tagged)
 
         for screen_index, (_, mon, is_cursor) in enumerate(tagged):
+            # Determine DPI scale by matching monitor center to a Qt screen.
+            dpi_scale = 1.0
+            if qt_screens:
+                center_x = mon["left"] + mon["width"] // 2
+                center_y = mon["top"] + mon["height"] // 2
+                for qt_screen in qt_screens:
+                    geo = qt_screen.geometry()
+                    if (geo.x() <= center_x < geo.x() + geo.width() and
+                            geo.y() <= center_y < geo.y() + geo.height()):
+                        dpi_scale = qt_screen.devicePixelRatio()
+                        break
+
             grab = sct.grab(mon)
             display_w, display_h = grab.width, grab.height
 
@@ -112,6 +125,7 @@ def capture_all() -> list[ScreenshotImage]:
                     scale=scale,
                     monitor_left=mon["left"],
                     monitor_top=mon["top"],
+                    dpi_scale=dpi_scale,
                 )
             )
 

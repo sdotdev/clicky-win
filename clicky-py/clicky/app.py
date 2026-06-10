@@ -157,7 +157,11 @@ def run() -> int:
         try:
             llm = create_brain(config)
             transcription = create_ears(config)
-            tts = create_mouth(config)
+            if config.tts_enabled:
+                tts = create_mouth(config)
+            else:
+                from clicky.clients.tts_null import NullTTSClient
+                tts = NullTTSClient()
         except Exception as exc:
             logger.error("Failed to create AI clients: %s", exc)
             return None
@@ -169,7 +173,7 @@ def run() -> int:
             transcription=transcription,
             llm=llm,
             tts=tts,
-            screen_capture_fn=capture_all,
+            screen_capture_fn=lambda: capture_all(qt_screens=QApplication.screens()),
             panel_visibility_controller=companion,
         )
 

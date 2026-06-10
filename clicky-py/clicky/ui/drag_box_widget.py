@@ -16,11 +16,12 @@ class DragBoxWidget(QWidget):
     BORDER_COLOR = "#FF6B00"
     BORDER_WIDTH = 2
     ANIM_DURATION_MS = 280
+    PADDING = 6
 
     def __init__(self, target_w: int, target_h: int, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._target_w = target_w
-        self._target_h = target_h
+        self._target_w = target_w + 2 * self.PADDING
+        self._target_h = target_h + 2 * self.PADDING
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -39,11 +40,13 @@ class DragBoxWidget(QWidget):
 
     def show_drag(self, anchor_x: int, anchor_y: int) -> None:
         """Grow from a 1×1 point at (anchor_x, anchor_y) to full target size."""
+        box_x = anchor_x - self.PADDING
+        box_y = anchor_y - self.PADDING
         self._geom_anim.stop()
-        self.setGeometry(QRect(anchor_x, anchor_y, 1, 1))
+        self.setGeometry(QRect(box_x, box_y, 1, 1))
         self.show()
-        self._geom_anim.setStartValue(QRect(anchor_x, anchor_y, 1, 1))
-        self._geom_anim.setEndValue(QRect(anchor_x, anchor_y, self._target_w, self._target_h))
+        self._geom_anim.setStartValue(QRect(box_x, box_y, 1, 1))
+        self._geom_anim.setEndValue(QRect(box_x, box_y, self._target_w, self._target_h))
         self._geom_anim.start()
 
     def paintEvent(self, event) -> None:  # noqa: ARG002

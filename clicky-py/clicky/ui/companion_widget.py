@@ -182,7 +182,8 @@ class CompanionWidget(QWidget):
         elif state == VoiceState.IDLE:
             self._stop_pulse()
             self._animate_contract()
-            if self._fly_target is not None:
+            if self._fly_target is not None or (self._fly_timer.isActive() and not self._fly_returning):
+                self._waiting_for_proximity = False
                 self.return_to_cursor()
             else:
                 self._frozen = False
@@ -348,6 +349,7 @@ class CompanionWidget(QWidget):
 
     def return_to_cursor(self) -> None:
         """Smoothly animate back to cursor position, then resume tracking."""
+        self._waiting_for_proximity = False
         if self._fly_target is None:
             return
         self._fly_target = None

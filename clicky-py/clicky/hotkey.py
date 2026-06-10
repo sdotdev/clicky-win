@@ -51,6 +51,7 @@ class _HotkeyState(Enum):
     UNARMED = auto()
     ARMED = auto()
     CANCELLED = auto()
+    ARMED_TEXT = auto()
 
 
 def _normalize_key(key: keyboard.Key | keyboard.KeyCode | None) -> str | None:
@@ -118,6 +119,7 @@ class HotkeyMonitor(QObject):
     # floating panel reliably, since Qt focus semantics for frameless
     # Tool windows on Windows 11 don't guarantee keyPressEvent delivery.
     escape_pressed = Signal()
+    text_input_requested = Signal()
 
     _VALID_BINDINGS: frozenset[str] = frozenset({"ctrl+alt", "right_ctrl"})
 
@@ -179,7 +181,10 @@ class HotkeyMonitor(QObject):
             return
 
         if self._state == _HotkeyState.UNARMED:
-            if self._is_armed():
+            if self._is_text_input_armed():
+                self._state = _HotkeyState.ARMED_TEXT
+                self._post_main("_emit_text_input_requested")
+            elif self._is_armed():
                 self._state = _HotkeyState.ARMED
                 self._post_main("_emit_pressed")
             return
@@ -212,6 +217,11 @@ class HotkeyMonitor(QObject):
                 self._post_main("_emit_released")
             return
 
+        if self._state == _HotkeyState.ARMED_TEXT:
+            if "shift" not in self._held:
+                self._state = _HotkeyState.UNARMED
+            return
+
         if self._state == _HotkeyState.CANCELLED:
             # Wait until every key is lifted before re-arming is
             # allowed. This prevents a partial release from sliding
@@ -230,6 +240,23 @@ class HotkeyMonitor(QObject):
             return has_ctrl and "alt" in self._held
         # right_ctrl
         return "ctrl_r" in self._held
+
+    def _is_text_input_armed(self) -> bool:
+        """True iff held set matches binding + Shift (text input mode)."""
+        if "shift" not in self._held:
+            return False
+        if self._binding == "ctrl+alt":
+            has_ctrl = "ctrl_l" in self._held or "ctrl_r" in self._held
+            if not (has_ctrl and "alt" in self._held):
+                return False
+            allowed: set[str] = {"alt", "shift"}
+            if "ctrl_l" in self._held:
+                allowed.add("ctrl_l")
+            if "ctrl_r" in self._held:
+                allowed.add("ctrl_r")
+            return self._held <= allowed and self._held.issuperset({"alt", "shift"})
+        # right_ctrl
+        return self._held == {"ctrl_r", "shift"}
 
     def _is_armed(self) -> bool:
         """True iff the currently-held set matches the binding exactly.
@@ -283,3 +310,7 @@ class HotkeyMonitor(QObject):
     @Slot()
     def _emit_escape(self) -> None:
         self.escape_pressed.emit()
+
+    @Slot()
+    def _emit_text_input_requested(self) -> None:
+        self.text_input_requested.emit()

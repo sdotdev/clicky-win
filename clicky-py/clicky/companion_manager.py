@@ -138,6 +138,13 @@ class CompanionManager(QObject):
         """Update the model used for LLM requests."""
         self._current_model = model_id
 
+    def handle_text_input(self, text: str) -> None:
+        """Inject typed text directly into the turn pipeline (skip mic/STT)."""
+        if not text.strip():
+            return
+        self._cancel_flag = False
+        self._current_task = asyncio.ensure_future(self._run_turn(text))
+
     # ------------------------------------------------------------------
     # PCM deque bridge
     # ------------------------------------------------------------------

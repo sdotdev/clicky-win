@@ -17,6 +17,9 @@ default_model = "claude-sonnet-4-6"
 # Log verbosity. Options: "DEBUG", "INFO", "WARNING", "ERROR".
 log_level = "INFO"
 
+# How smoothly the companion follows your cursor. 1.0 = instant snap, 0.05 = heavy lag.
+lerp_factor = 0.15
+
 # Path to knowledge base folder. Each subfolder = one app's KB.
 # Default: %APPDATA%/ClickyWin/knowledge/
 # knowledge_dir = "C:/path/to/knowledge"

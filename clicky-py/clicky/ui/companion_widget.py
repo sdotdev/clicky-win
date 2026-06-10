@@ -75,6 +75,9 @@ class CompanionWidget(QWidget):
 
         self._prev_x = 0
         self._prev_y = 0
+        self._lerp_x: float = 0.0
+        self._lerp_y: float = 0.0
+        self._lerp_factor: float = 0.15
 
         self._state = VoiceState.IDLE
         self._audio_level = 0.0
@@ -423,6 +426,9 @@ class CompanionWidget(QWidget):
                 self._prev_y = 0
                 self._track_cursor(force=True)
 
+    def set_lerp_factor(self, factor: float) -> None:
+        self._lerp_factor = max(0.01, min(1.0, factor))
+
     # ------------------------------------------------------------------
     # Cursor tracking
     # ------------------------------------------------------------------
@@ -452,7 +458,13 @@ class CompanionWidget(QWidget):
             edge_margin=self.EDGE_MARGIN,
         )
 
-        self.move(placement.x, placement.y)
+        if force:
+            self._lerp_x = float(placement.x)
+            self._lerp_y = float(placement.y)
+        else:
+            self._lerp_x += (placement.x - self._lerp_x) * self._lerp_factor
+            self._lerp_y += (placement.y - self._lerp_y) * self._lerp_factor
+        self.move(int(self._lerp_x), int(self._lerp_y))
         self._prev_x = cx
         self._prev_y = cy
 

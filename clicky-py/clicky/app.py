@@ -35,6 +35,9 @@ from clicky.ui.output_widget import OutputWidget
 from clicky.ui.text_input_widget import TextInputWidget
 from clicky.shake_detector import ShakeDetector
 from clicky.ui.tray_icon import TrayIcon
+from clicky.commands.router import CommandContext, CommandRouter
+from clicky.commands.tasks_command import handle_tasks
+from clicky.ui.tasks_window import TasksWindow
 
 APP_NAME = "ClickyWin"
 APP_AUTHOR = "ClickyWin"
@@ -110,6 +113,11 @@ def run() -> int:
     drag_box = DragBoxWidget(TextInputWidget.WIDTH, TextInputWidget.HEIGHT)
     output_widget = OutputWidget()
     output_drag_box = DragBoxWidget(OutputWidget.WIDTH, OutputWidget.HEIGHT)
+
+    tasks_window = TasksWindow()
+
+    router = CommandRouter()
+    router.register("tasks", handle_tasks)
 
     # Apply lerp factor from config.
     if result.config is not None:
@@ -303,9 +311,15 @@ def run() -> int:
     # Text input submitted -> run turn directly via manager.
     def _on_text_submitted(text: str) -> None:
         mgr = _manager[0]
-        if mgr is not None:
-            companion.set_state(VoiceState.PROCESSING)
-            mgr.handle_text_input(text)
+        if mgr is None:
+            return
+        ctx = CommandContext(tasks_window=tasks_window, companion_manager=mgr)
+        if router.dispatch(text, ctx):
+            return  # command handled, skip LLM
+        if tasks_window.isVisible():
+            mgr.set_context_addendum(tasks_window.get_tasks_context())
+        companion.set_state(VoiceState.PROCESSING)
+        mgr.handle_text_input(text)
 
     text_input.submitted.connect(_on_text_submitted)
     text_input.cancelled.connect(lambda: companion.set_state(VoiceState.IDLE))

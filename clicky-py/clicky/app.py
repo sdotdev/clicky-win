@@ -31,6 +31,7 @@ from clicky.ui.companion_widget import CompanionWidget
 from clicky.ui.drag_box_widget import DragBoxWidget
 from clicky.ui.history_window import HistoryWindow
 from clicky.ui.settings_window import QtLogHandler, SettingsWindow
+from clicky.ui.output_widget import OutputWidget
 from clicky.ui.text_input_widget import TextInputWidget
 from clicky.ui.tray_icon import TrayIcon
 
@@ -106,6 +107,8 @@ def run() -> int:
     history = HistoryWindow()
     text_input = TextInputWidget()
     drag_box = DragBoxWidget(TextInputWidget.WIDTH, TextInputWidget.HEIGHT)
+    output_widget = OutputWidget()
+    output_drag_box = DragBoxWidget(OutputWidget.WIDTH, OutputWidget.HEIGHT)
 
     # Apply lerp factor from config.
     if result.config is not None:
@@ -178,6 +181,24 @@ def run() -> int:
         )
 
         mgr.state_changed.connect(companion.set_state)
+
+        from clicky.point_parser import parse_point_tag as _parse_pt
+
+        mgr.response_delta.connect(output_widget.append_delta)
+        mgr.response_complete.connect(lambda text: output_widget.set_text(_parse_pt(text)[0]))
+
+        def _on_state_changed_output(state: VoiceState) -> None:
+            if state == VoiceState.RESPONDING:
+                pos = companion.pos()
+                anchor_x = pos.x() + companion.WIDGET_W + 8
+                anchor_y = pos.y()
+                output_widget.clear_and_hide()
+                output_drag_box.show_drag(anchor_x, anchor_y)
+                output_widget.show_animated(anchor_x, anchor_y)
+            elif state == VoiceState.LISTENING:
+                output_widget.clear_and_hide()
+
+        mgr.state_changed.connect(_on_state_changed_output)
 
         def _manage_output_capture(state: VoiceState) -> None:
             if state == VoiceState.RESPONDING:

@@ -134,7 +134,7 @@ def run() -> int:
     shortcut_monitor = GlobalShortcutMonitor()
     shortcut_monitor.open_settings.connect(settings_window.show)
     shortcut_monitor.open_settings.connect(settings_window.raise_)
-    shortcut_monitor.quit_app.connect(app.quit)
+    shortcut_monitor.quit_app.connect(QApplication.instance().quit)
 
     # Text input mode: Shift+hotkey — companion drags open the text box.
     def _on_text_input_requested() -> None:

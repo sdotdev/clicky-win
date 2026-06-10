@@ -388,7 +388,11 @@ class CompanionManager(QObject):
                 if self._config.tts_enabled:
                     self._speak_task = asyncio.ensure_future(self._speak(spoken_text))
                 else:
-                    self._set_state(VoiceState.IDLE)
+                    if point_tag is not None:
+                        # Delay IDLE until fly animation completes (400ms) + brief dwell (250ms)
+                        asyncio.ensure_future(self._delayed_idle(0.65))
+                    else:
+                        self._set_state(VoiceState.IDLE)
 
         except asyncio.CancelledError:
             logger.debug("turn cancelled")
@@ -401,3 +405,9 @@ class CompanionManager(QObject):
 
         # On success, stay in RESPONDING so the response text remains
         # visible until the next hotkey press resets to LISTENING.
+
+    async def _delayed_idle(self, delay: float) -> None:
+        """Transition to IDLE after a delay — used when fly_to runs with TTS off."""
+        await asyncio.sleep(delay)
+        if self._state == VoiceState.RESPONDING and not self._cancel_flag:
+            self._set_state(VoiceState.IDLE)

@@ -70,7 +70,9 @@ class CompanionManager(QObject):
     final_transcript = Signal(str)
     response_delta = Signal(str)
     response_complete = Signal(str)
-    step_text = Signal(str)  # text for the current step (drives output widget in step mode)
+    step_text = Signal(str)           # text for the current step (drives output widget in step mode)
+    step_progress = Signal(int, int)  # (current_1indexed, total) for progress bar
+    show_region_requested = Signal(int, int, int, int, str)  # x1,y1,x2,y2,label
     success_turn_completed = Signal()
     error = Signal(str)
 
@@ -171,13 +173,19 @@ class CompanionManager(QObject):
     def _show_step(self, index: int) -> None:
         step = self._steps[index]
         self.step_text.emit(step.text)
-        if step.point is not None:
+        self.step_progress.emit(index + 1, len(self._steps))
+
+        if step.region is not None:
+            r = step.region
+            self.show_region_requested.emit(r.x1, r.y1, r.x2, r.y2, r.label)
+            logger.info("step %d REGION: (%d,%d)→(%d,%d) label=%s", index, r.x1, r.y1, r.x2, r.y2, r.label)
+        elif step.point is not None:
             coords = map_point_to_screen(step.point, self._current_screenshots)
             if coords is not None:
                 self._panel_visibility_controller.fly_to(coords[0], coords[1])
                 logger.info("step %d POINT: (%d, %d) label=%s", index, coords[0], coords[1], step.point.label)
         else:
-            # Final step — go idle after TTS or brief dwell.
+            # Final step (no action) — go idle after TTS or brief dwell.
             if self._config.tts_enabled:
                 self._speak_task = asyncio.ensure_future(self._speak(step.text))
             else:

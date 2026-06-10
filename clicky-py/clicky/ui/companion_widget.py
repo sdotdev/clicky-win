@@ -95,6 +95,7 @@ class CompanionWidget(QWidget):
 
         self._frozen = False  # freeze cursor tracking during RESPONDING
         self._waiting_for_proximity = False  # waiting for cursor to approach after fly
+        self._proximity_armed = False  # True only after 5s arm delay has elapsed
 
         # Animation for waveform expand/contract
         self._scale_anim = QPropertyAnimation(self, b"anim_scale")
@@ -116,6 +117,12 @@ class CompanionWidget(QWidget):
         self._fly_timer = QTimer(self)
         self._fly_timer.setInterval(self.TRACK_INTERVAL_MS)  # ~30fps
         self._fly_timer.timeout.connect(self._fly_step)
+
+        # 5-second arm delay before proximity detection fires
+        self._proximity_arm_timer = QTimer(self)
+        self._proximity_arm_timer.setSingleShot(True)
+        self._proximity_arm_timer.setInterval(5000)
+        self._proximity_arm_timer.timeout.connect(self._arm_proximity)
 
         # Error flash timer
         self._error_timer = QTimer(self)
@@ -175,6 +182,8 @@ class CompanionWidget(QWidget):
             self._fly_returning = False
             self._frozen = False
             self._waiting_for_proximity = False
+            self._proximity_armed = False
+            self._proximity_arm_timer.stop()
             self._stop_pulse()
             self._animate_expand()
         elif state == VoiceState.PROCESSING:
@@ -404,11 +413,16 @@ class CompanionWidget(QWidget):
                 self._prev_y = 0
                 self._track_cursor(force=True)
             elif self._fly_target is not None:
-                # Reached destination — wait for cursor to approach before returning
+                # Reached destination — wait 5s then detect proximity.
                 self._waiting_for_proximity = True
+                self._proximity_armed = False
+                self._proximity_arm_timer.start()
 
     def set_lerp_factor(self, factor: float) -> None:
         self._lerp_factor = max(0.01, min(1.0, factor))
+
+    def _arm_proximity(self) -> None:
+        self._proximity_armed = True
 
     # ------------------------------------------------------------------
     # Cursor tracking
@@ -418,13 +432,15 @@ class CompanionWidget(QWidget):
         pos = QCursor.pos()  # Global screen coordinates
 
         if self._waiting_for_proximity:
-            cx, cy = pos.x(), pos.y()
-            centre_x = int(self._lerp_x) + self.WIDGET_W // 2
-            centre_y = int(self._lerp_y) + self.WIDGET_H // 2
-            if (cx - centre_x) ** 2 + (cy - centre_y) ** 2 <= self.PROXIMITY_PX ** 2:
-                self._waiting_for_proximity = False
-                self.proximity_reached.emit()
-                self.return_to_cursor()
+            if self._proximity_armed:
+                cx, cy = pos.x(), pos.y()
+                centre_x = int(self._lerp_x) + self.WIDGET_W // 2
+                centre_y = int(self._lerp_y) + self.WIDGET_H // 2
+                if (cx - centre_x) ** 2 + (cy - centre_y) ** 2 <= self.PROXIMITY_PX ** 2:
+                    self._waiting_for_proximity = False
+                    self._proximity_armed = False
+                    self.proximity_reached.emit()
+                    self.return_to_cursor()
             return  # stay frozen while waiting
 
         if self._frozen:

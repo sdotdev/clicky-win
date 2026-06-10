@@ -32,6 +32,7 @@ from clicky.ui.drag_box_widget import DragBoxWidget
 from clicky.ui.history_window import HistoryWindow
 from clicky.ui.settings_window import QtLogHandler, SettingsWindow
 from clicky.ui.output_widget import OutputWidget
+from clicky.ui.region_overlay_widget import RegionOverlayWidget
 from clicky.ui.text_input_widget import TextInputWidget
 from clicky.shake_detector import ShakeDetector
 from clicky.ui.tray_icon import TrayIcon
@@ -113,6 +114,7 @@ def run() -> int:
     drag_box = DragBoxWidget(TextInputWidget.WIDTH, TextInputWidget.HEIGHT)
     output_widget = OutputWidget()
     output_drag_box = DragBoxWidget(OutputWidget.WIDTH, OutputWidget.HEIGHT)
+    region_overlay = RegionOverlayWidget()
 
     tasks_window = TasksWindow()
 
@@ -214,7 +216,10 @@ def run() -> int:
 
         mgr.response_delta.connect(output_widget.append_delta)
         mgr.step_text.connect(output_widget.set_text)
+        mgr.step_progress.connect(output_widget.set_progress)
+        mgr.show_region_requested.connect(region_overlay.show_region)
         companion.proximity_reached.connect(mgr.advance_step)
+        region_overlay.region_entered.connect(mgr.advance_step)
 
         def _on_state_changed_output(state: VoiceState) -> None:
             if state == VoiceState.RESPONDING:
@@ -226,6 +231,9 @@ def run() -> int:
                 output_widget.show_animated(anchor_x, anchor_y)
             elif state == VoiceState.LISTENING:
                 output_widget.clear_and_hide()
+                region_overlay.hide_overlay()
+            elif state == VoiceState.IDLE:
+                region_overlay.hide_overlay()
 
         mgr.state_changed.connect(_on_state_changed_output)
 
@@ -312,12 +320,13 @@ def run() -> int:
     # Also update lerp on provider switch.
     # Text input submitted -> run turn directly via manager.
     def _on_text_submitted(text: str) -> None:
+        # Dispatch commands first — they don't require a working AI manager.
+        ctx = CommandContext(tasks_window=tasks_window, companion_manager=_manager[0])
+        if router.dispatch(text, ctx):
+            return
         mgr = _manager[0]
         if mgr is None:
             return
-        ctx = CommandContext(tasks_window=tasks_window, companion_manager=mgr)
-        if router.dispatch(text, ctx):
-            return  # command handled, skip LLM
         if tasks_window.isVisible():
             mgr.set_context_addendum(tasks_window.get_tasks_context())
         companion.set_state(VoiceState.PROCESSING)

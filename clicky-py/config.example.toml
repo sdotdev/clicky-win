@@ -12,6 +12,10 @@ log_level = "INFO"
 # How smoothly the companion follows your cursor. 1.0 = instant snap, 0.05 = heavy lag.
 lerp_factor = 0.15
 
+# Set to false to disable AI voice responses (TTS). The assistant will still
+# respond visually — you just won't hear it speak.
+tts_enabled = true
+
 # Path to knowledge base folder. Each subfolder = one app's KB.
 # Default: %APPDATA%/ClickyWin/knowledge/
 # knowledge_dir = "C:/path/to/knowledge"

@@ -10,6 +10,7 @@ import tomli_w
 from PySide6.QtCore import QObject, Qt, Signal, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -149,6 +150,11 @@ class SettingsWindow(QMainWindow):
         kb_layout.addWidget(self._knowledge_dir_edit)
         kb_layout.addWidget(browse_btn)
         form.addRow("Knowledge Dir:", kb_row)
+
+        # TTS toggle
+        self._tts_enabled_check = QCheckBox("Enable AI voice responses")
+        self._tts_enabled_check.setChecked(True)
+        form.addRow("Voice:", self._tts_enabled_check)
 
         # Save button
         save_btn = QPushButton("Save")
@@ -314,6 +320,7 @@ class SettingsWindow(QMainWindow):
         self._lerp_slider.setValue(slider_val)
         self._lerp_label.setText(f"{slider_val / 100:.2f}")
         self._knowledge_dir_edit.setText(data.get("knowledge_dir", ""))
+        self._tts_enabled_check.setChecked(bool(data.get("tts_enabled", True)))
 
         # Models — brain
         brain = data.get("brain", {})
@@ -347,6 +354,7 @@ class SettingsWindow(QMainWindow):
         data["hotkey"] = self._hotkey_combo.currentText()
         data["log_level"] = self._log_level_combo.currentText()
         data["lerp_factor"] = self._lerp_slider.value() / 100
+        data["tts_enabled"] = self._tts_enabled_check.isChecked()
         kd = self._knowledge_dir_edit.text().strip()
         if kd:
             data["knowledge_dir"] = kd

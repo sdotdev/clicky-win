@@ -21,7 +21,7 @@ from PySide6.QtWidgets import QApplication
 from clicky.clients.factory import create_brain, create_ears, create_mouth
 from clicky.companion_manager import CompanionManager
 from clicky.config import Config, ConfigError
-from clicky.hotkey import HotkeyMonitor
+from clicky.hotkey import GlobalShortcutMonitor, HotkeyMonitor
 from clicky.logging_config import configure_logging
 from clicky.mic_capture import MicCapture
 from clicky.output_capture import OutputCapture
@@ -130,6 +130,11 @@ def run() -> int:
 
     hotkey_binding = result.config.hotkey if result.config is not None else "ctrl+alt"
     hotkey_monitor = HotkeyMonitor(binding=hotkey_binding)
+
+    shortcut_monitor = GlobalShortcutMonitor()
+    shortcut_monitor.open_settings.connect(settings_window.show)
+    shortcut_monitor.open_settings.connect(settings_window.raise_)
+    shortcut_monitor.quit_app.connect(app.quit)
 
     # Text input mode: Shift+hotkey — companion drags open the text box.
     def _on_text_input_requested() -> None:
@@ -259,6 +264,7 @@ def run() -> int:
     text_input.cancelled.connect(lambda: companion.set_state(VoiceState.IDLE))
 
     hotkey_monitor.start()
+    shortcut_monitor.start()
     tray_icon.show()
     companion.show()
 

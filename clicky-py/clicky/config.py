@@ -59,6 +59,7 @@ class Config:
     brain: BrainConfig
     ears: EarsConfig
     mouth: MouthConfig
+    tts_enabled: bool = field(default=True)
     # Only populated when a *_worker provider is configured
     worker_url: str | None = field(default=None)
 
@@ -124,6 +125,8 @@ class Config:
                 )
             worker_url = raw_url
 
+        tts_enabled = bool(data.get("tts_enabled", True))
+
         return cls(
             hotkey=hotkey,
             log_level=log_level,
@@ -132,6 +135,7 @@ class Config:
             brain=brain,
             ears=ears,
             mouth=mouth,
+            tts_enabled=tts_enabled,
             worker_url=worker_url,
         )
 

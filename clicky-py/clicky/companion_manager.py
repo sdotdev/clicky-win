@@ -385,7 +385,10 @@ class CompanionManager(QObject):
                             coords[0], coords[1], point_tag.label,
                         )
 
-                self._speak_task = asyncio.ensure_future(self._speak(spoken_text))
+                if self._config.tts_enabled:
+                    self._speak_task = asyncio.ensure_future(self._speak(spoken_text))
+                else:
+                    self._set_state(VoiceState.IDLE)
 
         except asyncio.CancelledError:
             logger.debug("turn cancelled")

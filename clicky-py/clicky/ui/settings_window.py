@@ -120,6 +120,22 @@ class SettingsWindow(QMainWindow):
         lerp_layout.addWidget(self._lerp_label)
         form.addRow("Lerp Factor:", lerp_row)
 
+        # Shake sensitivity
+        shake_row = QWidget()
+        shake_layout = QHBoxLayout(shake_row)
+        shake_layout.setContentsMargins(0, 0, 0, 0)
+        self._shake_slider = QSlider(Qt.Orientation.Horizontal)
+        self._shake_slider.setRange(0, 100)
+        self._shake_slider.setValue(50)
+        self._shake_label = QLabel("0.50")
+        self._shake_label.setFixedWidth(36)
+        self._shake_slider.valueChanged.connect(
+            lambda v: self._shake_label.setText(f"{v / 100:.2f}")
+        )
+        shake_layout.addWidget(self._shake_slider)
+        shake_layout.addWidget(self._shake_label)
+        form.addRow("Shake Sensitivity:", shake_row)
+
         # Knowledge dir
         kb_row = QWidget()
         kb_layout = QHBoxLayout(kb_row)
@@ -300,6 +316,10 @@ class SettingsWindow(QMainWindow):
         slider_val = max(1, min(100, round(lerp * 100)))
         self._lerp_slider.setValue(slider_val)
         self._lerp_label.setText(f"{slider_val / 100:.2f}")
+        shake = float(data.get("shake_sensitivity", 0.5))
+        shake_val = max(0, min(100, round(shake * 100)))
+        self._shake_slider.setValue(shake_val)
+        self._shake_label.setText(f"{shake_val / 100:.2f}")
         self._knowledge_dir_edit.setText(data.get("knowledge_dir", ""))
         self._tts_enabled_check.setChecked(bool(data.get("tts_enabled", True)))
 
@@ -335,6 +355,7 @@ class SettingsWindow(QMainWindow):
         data["hotkey"] = self._hotkey_combo.currentText()
         data["log_level"] = self._log_level_combo.currentText()
         data["lerp_factor"] = self._lerp_slider.value() / 100
+        data["shake_sensitivity"] = self._shake_slider.value() / 100
         data["tts_enabled"] = self._tts_enabled_check.isChecked()
         kd = self._knowledge_dir_edit.text().strip()
         if kd:

@@ -60,6 +60,7 @@ class Config:
     ears: EarsConfig
     mouth: MouthConfig
     tts_enabled: bool = field(default=True)
+    shake_sensitivity: float = field(default=0.5)
     # Only populated when a *_worker provider is configured
     worker_url: str | None = field(default=None)
 
@@ -127,6 +128,8 @@ class Config:
 
         tts_enabled = bool(data.get("tts_enabled", True))
 
+        shake_sensitivity = float(max(0.0, min(1.0, data.get("shake_sensitivity", 0.5))))
+
         return cls(
             hotkey=hotkey,
             log_level=log_level,
@@ -136,6 +139,7 @@ class Config:
             ears=ears,
             mouth=mouth,
             tts_enabled=tts_enabled,
+            shake_sensitivity=shake_sensitivity,
             worker_url=worker_url,
         )
 

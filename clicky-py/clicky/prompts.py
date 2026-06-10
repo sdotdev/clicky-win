@@ -50,7 +50,9 @@ COMPANION_VOICE_SYSTEM_PROMPT = _BASE_PROMPT
 
 
 def build_system_prompt(
-    kb_content: str | None = None, app_name: str | None = None
+    kb_content: str | None = None,
+    app_name: str | None = None,
+    task_context: str | None = None,
 ) -> str:
     """Build the full system prompt, optionally with KB content."""
     parts = [_BASE_PROMPT]
@@ -66,4 +68,7 @@ def build_system_prompt(
             "\nno app-specific knowledge base is loaded for this session. "
             "answer based on your training knowledge and what you can see on screen."
         )
-    return "\n".join(parts)
+    prompt = "\n".join(parts)
+    if task_context:
+        prompt += f"\n\n---\n{task_context}"
+    return prompt

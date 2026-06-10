@@ -104,6 +104,7 @@ class CompanionManager(QObject):
         self._cancel_flag: bool = False
         self._current_screenshots: list[ScreenshotImage] = []
         self._speak_task: asyncio.Task[None] | None = None
+        self._context_addendum: str = ""
 
         # PCM deque bridge — same pattern as app.py.  Replaced on every
         # hotkey-press cycle so a stale generator cannot leak chunks.
@@ -137,6 +138,10 @@ class CompanionManager(QObject):
     def set_model(self, model_id: str) -> None:
         """Update the model used for LLM requests."""
         self._current_model = model_id
+
+    def set_context_addendum(self, text: str) -> None:
+        """Prepend extra context to the next turn's system prompt (one-shot)."""
+        self._context_addendum = text
 
     def handle_text_input(self, text: str) -> None:
         """Inject typed text directly into the turn pipeline (skip mic/STT)."""
@@ -356,7 +361,8 @@ class CompanionManager(QObject):
                 else:
                     logger.debug("no KB match for window: %s", window_title)
 
-            system_prompt = build_system_prompt(kb_content, app_name)
+            system_prompt = build_system_prompt(kb_content, app_name, task_context=self._context_addendum or None)
+            self._context_addendum = ""  # clear after use
 
             # Transition to RESPONDING.
             self._set_state(VoiceState.RESPONDING)

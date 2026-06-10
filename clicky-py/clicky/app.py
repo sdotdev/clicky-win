@@ -32,6 +32,7 @@ from clicky.ui.drag_box_widget import DragBoxWidget
 from clicky.ui.history_window import HistoryWindow
 from clicky.ui.settings_window import QtLogHandler, SettingsWindow
 from clicky.ui.text_input_widget import TextInputWidget
+from clicky.shake_detector import ShakeDetector
 from clicky.ui.tray_icon import TrayIcon
 
 APP_NAME = "ClickyWin"
@@ -131,10 +132,30 @@ def run() -> int:
     hotkey_binding = result.config.hotkey if result.config is not None else "ctrl+alt"
     hotkey_monitor = HotkeyMonitor(binding=hotkey_binding)
 
+    shake_sensitivity = result.config.shake_sensitivity if result.config is not None else 0.5
+    shake_detector = ShakeDetector(sensitivity=shake_sensitivity)
+
     shortcut_monitor = GlobalShortcutMonitor()
     shortcut_monitor.open_settings.connect(settings_window.show)
     shortcut_monitor.open_settings.connect(settings_window.raise_)
     shortcut_monitor.quit_app.connect(QApplication.instance().quit)
+
+    _system_active = [True]  # mutable container for closure
+
+    def _on_shake_toggle() -> None:
+        _system_active[0] = not _system_active[0]
+        if _system_active[0]:
+            companion.show()
+            hotkey_monitor.start()
+            shortcut_monitor.start()
+            shake_detector.start()
+        else:
+            companion.hide()
+            hotkey_monitor.stop()
+            shortcut_monitor.stop()
+            # Keep shake_detector running so user can shake to re-enable
+
+    shake_detector.shake_detected.connect(_on_shake_toggle)
 
     # Text input mode: Shift+hotkey — companion drags open the text box.
     def _on_text_input_requested() -> None:
@@ -248,6 +269,7 @@ def run() -> int:
             logger.error("Config reload failed: %s", exc)
             return
         companion.set_lerp_factor(new_config.lerp_factor)
+        shake_detector.set_sensitivity(new_config.shake_sensitivity)
         tray_icon.showMessage("ClickyWin", "General settings saved.")
 
     settings_window.settings_saved.connect(_on_settings_saved)
@@ -265,12 +287,14 @@ def run() -> int:
 
     hotkey_monitor.start()
     shortcut_monitor.start()
+    shake_detector.start()
     tray_icon.show()
     companion.show()
 
     result.app.aboutToQuit.connect(hotkey_monitor.stop)
     result.app.aboutToQuit.connect(companion.hide)
     result.app.aboutToQuit.connect(output_capture.stop)
+    result.app.aboutToQuit.connect(shake_detector.stop)
 
     loop = qasync.QEventLoop(result.app)
     asyncio.set_event_loop(loop)

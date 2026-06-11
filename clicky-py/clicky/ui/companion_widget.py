@@ -30,7 +30,11 @@ logger = logging.getLogger(__name__)
 class CompanionWidget(QWidget):
     """Small cursor-following overlay. Shows a blue triangle when idle."""
 
-    proximity_reached = Signal()  # emitted when cursor enters PROXIMITY_PX of a fly_to target
+    proximity_reached = Signal()           # emitted when cursor enters PROXIMITY_PX of a fly_to target
+    fly_started = Signal(int, int, int, int)  # (start_cx, start_cy, target_x, target_y)
+    fly_position = Signal(int, int)           # (cx, cy) emitted each animation frame
+    fly_completed = Signal(int, int)          # (target_x, target_y) when companion lands
+    swarm_ready = Signal(int, int)            # (cx, cy) emitted at bottom of bounce — start swarm here
 
     # Dimensions -- enough for triangle + future waveform expansion
     WIDGET_W = 120
@@ -114,15 +118,23 @@ class CompanionWidget(QWidget):
         self._fly_progress: float = 0.0  # 0.0 → 1.0
         self._fly_duration_ms: int = 400
         self._fly_returning: bool = False
+        self._fly_returning_elastic: bool = False
+        self._is_drag_open: bool = False  # True when fly was triggered by drag_open
         self._fly_timer = QTimer(self)
         self._fly_timer.setInterval(self.TRACK_INTERVAL_MS)  # ~30fps
         self._fly_timer.timeout.connect(self._fly_step)
 
-        # 5-second arm delay before proximity detection fires
+        # short arm delay — prevents accidental trigger if cursor is near fly path
         self._proximity_arm_timer = QTimer(self)
         self._proximity_arm_timer.setSingleShot(True)
-        self._proximity_arm_timer.setInterval(5000)
+        self._proximity_arm_timer.setInterval(500)
         self._proximity_arm_timer.timeout.connect(self._arm_proximity)
+
+        # 10-second fallback: elastically snap back if user never approaches
+        self._snap_fallback_timer = QTimer(self)
+        self._snap_fallback_timer.setSingleShot(True)
+        self._snap_fallback_timer.setInterval(10000)
+        self._snap_fallback_timer.timeout.connect(self._snap_back_to_cursor)
 
         # Error flash timer
         self._error_timer = QTimer(self)
@@ -130,6 +142,14 @@ class CompanionWidget(QWidget):
         self._error_timer.setInterval(1000)  # 1 second red flash
         self._error_timer.timeout.connect(self._end_error_flash)
         self._error_flash = False
+
+        # Bounce animation (swarm launch)
+        self._bounce_scale: float = 1.0
+        self._bounce_t: float = 0.0
+        self._bounce_fired: bool = False
+        self._bounce_timer = QTimer(self)
+        self._bounce_timer.setInterval(16)  # ~60fps
+        self._bounce_timer.timeout.connect(self._bounce_tick)
 
         self._cursor_timer = QTimer(self)
         self._cursor_timer.setInterval(self.TRACK_INTERVAL_MS)
@@ -176,6 +196,7 @@ class CompanionWidget(QWidget):
         self._state = state
 
         if state == VoiceState.LISTENING:
+            self._force_topmost()
             # Interrupt: stop any fly animation, clear target, resume tracking
             self._fly_timer.stop()
             self._fly_target = None
@@ -184,11 +205,13 @@ class CompanionWidget(QWidget):
             self._waiting_for_proximity = False
             self._proximity_armed = False
             self._proximity_arm_timer.stop()
+            self._snap_fallback_timer.stop()
             self._stop_pulse()
             self._animate_expand()
         elif state == VoiceState.PROCESSING:
             self._animate_to_pulse()
         elif state == VoiceState.RESPONDING:
+            self._force_topmost()
             self._frozen = True  # freeze position during TTS
             self._start_pulse(DS.Colors.companion_responding)
         elif state == VoiceState.IDLE:
@@ -311,6 +334,21 @@ class CompanionWidget(QWidget):
     def showEvent(self, event) -> None:  # noqa: ARG002
         """Reapply DWM transparency on every show — Windows resets it."""
         apply_win32_transparency(int(self.winId()))
+        self._force_topmost()
+
+    def _force_topmost(self) -> None:
+        import sys
+        if sys.platform == "win32":
+            import ctypes
+            HWND_TOPMOST = -1
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            try:
+                ctypes.windll.user32.SetWindowPos(
+                    int(self.winId()), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE
+                )
+            except Exception as e:
+                logger.error("SetWindowPos failed: %s", e)
 
     def show(self) -> None:
         super().show()
@@ -330,6 +368,40 @@ class CompanionWidget(QWidget):
         """Restore after screen capture."""
         self.setVisible(True)
 
+    def trigger_bounce(self) -> None:
+        """Start the swarm-launch bounce. Emits swarm_ready at the bottom of the squish."""
+        self._bounce_t = 0.0
+        self._bounce_fired = False
+        self._bounce_scale = 1.0
+        self._bounce_timer.start()
+
+    def _bounce_tick(self) -> None:
+        self._bounce_t += 16 / 240.0  # 240ms total
+        t = min(self._bounce_t, 1.0)
+
+        if t < 0.5:
+            # Squish down: sin² bell curve → 0.6 at peak
+            self._bounce_scale = 1.0 - 0.4 * math.sin(math.pi * t / 0.5) ** 2
+        else:
+            if not self._bounce_fired:
+                self._bounce_fired = True
+                cx = self.pos().x() + self.WIDGET_W // 2
+                cy = self.pos().y() + self.WIDGET_H // 2
+                self.swarm_ready.emit(cx, cy)
+            # OutBack spring from 0.6 back to 1.0
+            s = (t - 0.5) / 0.5  # 0→1 in the second half
+            c1 = 1.70158
+            c3 = c1 + 1.0
+            out_t = 1.0 + c3 * (s - 1.0) ** 3 + c1 * (s - 1.0) ** 2
+            self._bounce_scale = 0.6 + 0.4 * out_t
+
+        self.update()
+
+        if t >= 1.0:
+            self._bounce_timer.stop()
+            self._bounce_scale = 1.0
+            self.update()
+
     def fly_to(self, x: int, y: int) -> None:
         """Smoothly animate companion to target screen coordinates."""
         self._fly_target = (x, y)
@@ -343,12 +415,18 @@ class CompanionWidget(QWidget):
         self._fly_end = (float(target_x), float(target_y))
         self._fly_progress = 0.0
         self._fly_duration_ms = 400
+        self._fly_returning_elastic = False
+        self._is_drag_open = False
         self._fly_timer.start()
+        start_cx = pos.x() + self.WIDGET_W // 2
+        start_cy = pos.y() + self.WIDGET_H // 2
+        self.fly_started.emit(start_cx, start_cy, x, y)
         logger.info("fly_to: (%d, %d)", x, y)
 
     def drag_open(self, screen_x: int, screen_y: int) -> None:
         """Animate companion to (screen_x, screen_y) then auto-return — used for text box open."""
         self._frozen = True
+        self._is_drag_open = True
         self._fly_target = (screen_x, screen_y)
         self._fly_returning = False
 
@@ -361,6 +439,7 @@ class CompanionWidget(QWidget):
 
     def return_to_cursor(self) -> None:
         """Smoothly animate back to cursor position, then resume tracking."""
+        self._snap_fallback_timer.stop()
         self._waiting_for_proximity = False
         if self._fly_target is None:
             return
@@ -384,17 +463,29 @@ class CompanionWidget(QWidget):
         self._fly_start = (float(pos.x()), float(pos.y()))
         self._fly_end = (float(placement.x), float(placement.y))
         self._fly_progress = 0.0
-        self._fly_duration_ms = 300
+        self._fly_duration_ms = 380
+        self._fly_returning_elastic = True  # use OutBack for snap-back
         self._fly_timer.start()
+
+    def _snap_back_to_cursor(self) -> None:
+        """Auto-return to cursor if still waiting for proximity after 10s."""
+        if self._waiting_for_proximity:
+            self.return_to_cursor()
 
     def _fly_step(self) -> None:
         """Advance one frame of fly animation (called by _fly_timer)."""
         step = self.TRACK_INTERVAL_MS / self._fly_duration_ms
         self._fly_progress = min(1.0, self._fly_progress + step)
 
-        # OutCubic easing: 1 - (1 - t)^3
         t = self._fly_progress
-        eased = 1.0 - (1.0 - t) ** 3
+        if self._fly_returning and getattr(self, "_fly_returning_elastic", False):
+            # OutBack easing: overshoots then settles (c1=1.70158)
+            c1 = 1.70158
+            c3 = c1 + 1
+            eased = 1.0 + c3 * (t - 1.0) ** 3 + c1 * (t - 1.0) ** 2
+        else:
+            # OutCubic easing: 1 - (1 - t)^3
+            eased = 1.0 - (1.0 - t) ** 3
 
         sx, sy = self._fly_start
         ex, ey = self._fly_end
@@ -403,6 +494,7 @@ class CompanionWidget(QWidget):
         self._lerp_x = cur_x
         self._lerp_y = cur_y
         self.move(int(cur_x), int(cur_y))
+        self.fly_position.emit(int(cur_x) + self.WIDGET_W // 2, int(cur_y) + self.WIDGET_H // 2)
 
         if self._fly_progress >= 1.0:
             self._fly_timer.stop()
@@ -417,6 +509,9 @@ class CompanionWidget(QWidget):
                 self._waiting_for_proximity = True
                 self._proximity_armed = False
                 self._proximity_arm_timer.start()
+                self._snap_fallback_timer.start()
+                if not self._is_drag_open:
+                    self.fly_completed.emit(self._fly_target[0], self._fly_target[1])
 
     def set_lerp_factor(self, factor: float) -> None:
         self._lerp_factor = max(0.01, min(1.0, factor))
@@ -508,6 +603,7 @@ class CompanionWidget(QWidget):
         else:
             size_delta = self.ACTIVE_TRIANGLE_SIZE - self.TRIANGLE_SIZE
             tri_size = self.TRIANGLE_SIZE + size_delta * self._scale
+        tri_size *= self._bounce_scale
 
         # Triangle points at cursor (upper-left) at 45° angle.
         # Tip is at upper-left corner of widget, base fans out toward lower-right.
@@ -606,9 +702,7 @@ class CompanionWidget(QWidget):
         if self._output_level > 0.005:
             level = min(1.0, self._output_level)
         else:
-            # Fallback: gentle breathing from pulse animation
-            synthetic = (self._pulse_scale - 0.8) / 0.4
-            level = max(0.3, min(1.0, synthetic))
+            return
 
         bar_heights = compute_bar_heights(
             level, self.WAVEFORM_MAX_HEIGHT, self.WAVEFORM_MIN_HEIGHT

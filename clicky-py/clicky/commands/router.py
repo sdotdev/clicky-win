@@ -7,8 +7,10 @@ from typing import Any, Callable
 @dataclass
 class CommandContext:
     """Passed to every command handler."""
-    tasks_window: Any = None   # TasksWindow | None
-    companion_manager: Any = None  # CompanionManager | None
+    tasks_window: Any = None        # TasksWindow | None
+    companion_manager: Any = None   # CompanionManager | None
+    companion: Any = None           # CompanionWidget | None
+    swarm_overlay: Any = None       # SwarmOverlayWidget | None
 
 
 class CommandRouter:
@@ -33,8 +35,12 @@ class CommandRouter:
             return False
         cmd = parts[0].lower()
         args = parts[1] if len(parts) > 1 else ""
-        handler = self._handlers.get(cmd)
-        if handler is None:
+        
+        import difflib
+        matches = difflib.get_close_matches(cmd, self._handlers.keys(), n=1, cutoff=0.7)
+        if not matches:
             return False
+            
+        handler = self._handlers[matches[0]]
         handler(args, ctx)
         return True

@@ -16,7 +16,20 @@ from pathlib import Path
 
 import qasync
 from platformdirs import user_config_dir, user_log_dir
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
+
+# Must run before QApplication and MSS initialize so Windows reports physical
+# pixel counts instead of virtualized (DPI-scaled) values.
+if sys.platform == "win32":
+    import ctypes
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwarenessContext(-4)  # PER_MONITOR_V2
+    except (AttributeError, OSError):
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+        except (AttributeError, OSError):
+            pass
 
 from clicky.clients.factory import create_brain, create_ears, create_mouth
 from clicky.companion_manager import CompanionManager
@@ -33,11 +46,16 @@ from clicky.ui.history_window import HistoryWindow
 from clicky.ui.settings_window import QtLogHandler, SettingsWindow
 from clicky.ui.output_widget import OutputWidget
 from clicky.ui.region_overlay_widget import RegionOverlayWidget
+from clicky.ui.comet_trail_widget import CometTrailWidget
+from clicky.ui.annotation_overlay_widget import AnnotationOverlayWidget
+from clicky.ui.arrow_overlay_widget import ArrowOverlayWidget
+from clicky.ui.swarm_overlay_widget import SwarmOverlayWidget
 from clicky.ui.text_input_widget import TextInputWidget
 from clicky.shake_detector import ShakeDetector
 from clicky.ui.tray_icon import TrayIcon
 from clicky.commands.router import CommandContext, CommandRouter
 from clicky.commands.tasks_command import handle_tasks
+from clicky.commands.swarm_command import handle_swarm
 from clicky.ui.tasks_window import TasksWindow
 
 APP_NAME = "ClickyWin"
@@ -113,14 +131,28 @@ def run() -> int:
     text_input = TextInputWidget()
     drag_box = DragBoxWidget(TextInputWidget.WIDTH, TextInputWidget.HEIGHT)
     output_widget = OutputWidget()
-    output_drag_box = DragBoxWidget(OutputWidget.WIDTH, OutputWidget.HEIGHT)
+    output_drag_box = DragBoxWidget(OutputWidget.WIDTH, 100)
     region_overlay = RegionOverlayWidget()
+    comet_trail = CometTrailWidget()
+    annotation_overlay = AnnotationOverlayWidget()
+    arrow_overlay = ArrowOverlayWidget()
 
     tasks_window = TasksWindow()
+    swarm_overlay = SwarmOverlayWidget()
 
     router = CommandRouter()
     router.register("tasks", handle_tasks)
+    router.register("swarm", handle_swarm)
     text_input.set_commands(router.command_names())
+
+    companion.fly_started.connect(comet_trail.show_trail)
+    companion.fly_position.connect(comet_trail.add_position)
+    companion.fly_completed.connect(comet_trail.start_fade)
+    companion.fly_completed.connect(annotation_overlay.show_circle)
+    from PySide6.QtCore import QPointF
+    companion.swarm_ready.connect(
+        lambda cx, cy: swarm_overlay.start_swarm(QPointF(cx, cy), swarm_overlay.pending_actions)
+    )
 
     # Apply lerp factor from config.
     if result.config is not None:
@@ -157,6 +189,19 @@ def run() -> int:
     _system_active = [True]  # mutable container for closure
 
     def _on_shake_toggle() -> None:
+        if region_overlay.isVisible():
+            region_overlay.hide_overlay()
+            if _manager[0] is not None:
+                _manager[0].advance_step()
+            return
+
+        if output_widget.isVisible():
+            output_widget.fade_and_hide()
+            mgr = _manager[0]
+            if mgr is not None and mgr._state == VoiceState.RESPONDING:
+                mgr._set_state(VoiceState.IDLE)
+            return
+
         _system_active[0] = not _system_active[0]
         if _system_active[0]:
             companion.show()
@@ -213,22 +258,54 @@ def run() -> int:
         )
 
         mgr.state_changed.connect(companion.set_state)
+        mgr.steps_complete.connect(
+            lambda: QTimer.singleShot(1500, output_widget.fade_and_hide)
+        )
 
         mgr.response_delta.connect(output_widget.append_delta)
         mgr.step_text.connect(output_widget.set_text)
         mgr.step_progress.connect(output_widget.set_progress)
         mgr.show_region_requested.connect(region_overlay.show_region)
+        mgr.show_arrow_requested.connect(arrow_overlay.show_arrow)
         companion.proximity_reached.connect(mgr.advance_step)
         region_overlay.region_entered.connect(mgr.advance_step)
 
         def _on_state_changed_output(state: VoiceState) -> None:
+            if state == VoiceState.PROCESSING:
+                pos = companion.pos()
+                think_x = pos.x() + companion.WIDGET_W + 8
+                think_y = pos.y()
+                output_widget.show_thinking(think_x, think_y)
+                return
             if state == VoiceState.RESPONDING:
                 pos = companion.pos()
                 anchor_x = pos.x() + companion.WIDGET_W + 8
                 anchor_y = pos.y()
-                output_widget.clear_and_hide()
-                output_drag_box.show_drag(anchor_x, anchor_y)
-                output_widget.show_animated(anchor_x, anchor_y)
+
+                target_w = output_widget.WIDTH
+                from PySide6.QtWidgets import QApplication
+                from PySide6.QtCore import QPoint
+                screen = QApplication.screenAt(QPoint(anchor_x, anchor_y))
+                if screen is None:
+                    screen = QApplication.primaryScreen()
+                geo = screen.geometry()
+                if anchor_x + target_w > geo.right():
+                    anchor_x = geo.right() - target_w
+                if anchor_y + 300 > geo.bottom():
+                    anchor_y = geo.bottom() - 300
+                anchor_x = max(geo.left(), anchor_x)
+                anchor_y = max(geo.top(), anchor_y)
+
+                if output_widget.isVisible():
+                    # Already open from PROCESSING thinking — just stop dots, no re-animate
+                    output_widget.stop_thinking()
+                else:
+                    output_widget.clear_and_hide()
+                    output_drag_box.show_drag(anchor_x, anchor_y)
+                    output_widget.show_animated(anchor_x, anchor_y)
+                    drag_corner_x = anchor_x + OutputWidget.WIDTH
+                    drag_corner_y = anchor_y + 100
+                    companion.drag_open(drag_corner_x, drag_corner_y)
             elif state == VoiceState.LISTENING:
                 output_widget.clear_and_hide()
                 region_overlay.hide_overlay()
@@ -321,7 +398,12 @@ def run() -> int:
     # Text input submitted -> run turn directly via manager.
     def _on_text_submitted(text: str) -> None:
         # Dispatch commands first — they don't require a working AI manager.
-        ctx = CommandContext(tasks_window=tasks_window, companion_manager=_manager[0])
+        ctx = CommandContext(
+            tasks_window=tasks_window,
+            companion_manager=_manager[0],
+            companion=companion,
+            swarm_overlay=swarm_overlay,
+        )
         if router.dispatch(text, ctx):
             return
         mgr = _manager[0]

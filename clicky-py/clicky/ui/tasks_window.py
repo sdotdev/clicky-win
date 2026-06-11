@@ -1,9 +1,11 @@
 """Tasks panel — floating 300×400 to-do list."""
 from __future__ import annotations
 
+import time
 from datetime import date, timedelta
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt, QPoint
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -28,14 +30,14 @@ class TasksWindow(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._current_date: str = date.today().isoformat()
+        self._opened_at: float = 0.0
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
         )
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setFixedSize(self.WIDTH, self.HEIGHT)
+        self._drag_offset: QPoint | None = None
 
         self.setStyleSheet(
             f"QWidget#tasks_root {{"
@@ -56,6 +58,8 @@ class TasksWindow(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(root)
+        
+        root.installEventFilter(self)
 
         layout = QVBoxLayout(root)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -83,6 +87,7 @@ class TasksWindow(QWidget):
         self._date_label.setStyleSheet(
             f"color: {DS.Colors.text_primary}; font-size: 12px; font-weight: bold;"
         )
+        self._date_label.installEventFilter(self)
 
         self._next_btn = QPushButton("→")
         self._next_btn.setStyleSheet(btn_style)
@@ -92,6 +97,13 @@ class TasksWindow(QWidget):
         header.addWidget(self._prev_btn)
         header.addWidget(self._date_label, 1)
         header.addWidget(self._next_btn)
+        
+        close_btn = QPushButton("×")
+        close_btn.setStyleSheet(btn_style)
+        close_btn.setFixedWidth(28)
+        close_btn.clicked.connect(self.hide)
+        header.addWidget(close_btn)
+        
         layout.addLayout(header)
 
         # Scroll area for tasks
@@ -150,6 +162,22 @@ class TasksWindow(QWidget):
         layout.addLayout(footer)
 
         self._refresh()
+
+    # ------------------------------------------------------------------
+    # Drag to move
+    # ------------------------------------------------------------------
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._drag_offset = event.globalPosition().toPoint() - self.pos()
+        elif event.type() == QEvent.Type.MouseMove:
+            if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
+                self.move(event.globalPosition().toPoint() - self._drag_offset)
+        elif event.type() == QEvent.Type.MouseButtonRelease:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._drag_offset = None
+        return super().eventFilter(obj, event)
 
     # ------------------------------------------------------------------
     # Navigation
@@ -257,14 +285,23 @@ class TasksWindow(QWidget):
     # Visibility helpers
     # ------------------------------------------------------------------
 
+    def closeEvent(self, event) -> None:
+        event.ignore()
+        self.hide()
+
     def show_top_left(self) -> None:
+        self._opened_at = time.monotonic()
         screen = QApplication.primaryScreen()
         geo = screen.geometry()
         self.move(geo.x() + 16, geo.y() + 16)
         self.show()
+        self.raise_()
+        self.activateWindow()
 
     def toggle_visible(self) -> None:
         if self.isVisible():
+            if time.monotonic() - self._opened_at < 1.5:
+                return  # grace period — ignore spurious close within 1.5s of opening
             self.hide()
         else:
             self.show_top_left()

@@ -19,7 +19,8 @@ def _make_shot(scale: float, left: int, top: int) -> ScreenshotImage:
         display_height_px=1080,
         image_width_px=1280,
         image_height_px=720,
-        scale=scale,
+        scale_x=scale,
+        scale_y=scale,
         monitor_left=left,
         monitor_top=top,
     )

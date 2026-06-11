@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from clicky.point_parser import PointTag
 from clicky.screen_capture import ScreenshotImage
+from clicky.uia_snap import snap_to_element
 
 
 def map_point_to_screen(
@@ -28,6 +29,10 @@ def map_point_to_screen(
     else:
         shot = screenshots[0]  # cursor's screen (first in list)
 
-    real_x = int(shot.monitor_left / shot.dpi_scale) + int(tag.x / shot.scale / shot.dpi_scale)
-    real_y = int(shot.monitor_top  / shot.dpi_scale) + int(tag.y / shot.scale / shot.dpi_scale)
-    return (real_x, real_y)
+    # Clamp to image bounds before inverting the scale transform.
+    clamped_x = max(0, min(tag.x, shot.image_width_px - 1))
+    clamped_y = max(0, min(tag.y, shot.image_height_px - 1))
+
+    real_x = shot.monitor_left + int(clamped_x / shot.scale_x)
+    real_y = shot.monitor_top + int(clamped_y / shot.scale_y)
+    return snap_to_element(real_x, real_y)

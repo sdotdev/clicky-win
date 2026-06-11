@@ -46,6 +46,13 @@ class DS:
         # Borders
         border = "#444444"
 
+        # Light mode (input box + output chatbox)
+        light_bg = "#ffffff"
+        light_surface = "#f4f4f5"
+        light_border = "#d4d4d8"
+        light_text = "#18181b"
+        light_text_secondary = "#71717a"
+
     class CornerRadius:
         large = 16  # panel
         medium = 12

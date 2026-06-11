@@ -17,10 +17,29 @@ class RegionTag:
 
 
 @dataclass(frozen=True)
+class AddTaskTag:
+    date: str
+    text: str
+
+
+@dataclass(frozen=True)
+class ArrowTag:
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+    label: str = ""
+    screen: int | None = None
+
+
+@dataclass(frozen=True)
 class Step:
     text: str
     point: PointTag | None = None   # fly companion to this point
     region: RegionTag | None = None  # dim screen, highlight this rectangle
+    arrow: ArrowTag | None = None   # draw animated arrow from p1 to p2
+    add_task: AddTaskTag | None = None
+    refresh: bool = False
 
 
 # Combined regex matching either a POINT or REGION step tag.
@@ -31,6 +50,14 @@ _ANY_TAG_RE = re.compile(
     r"|"
     r"\[REGION:(?P<rx1>\d+)\s*,\s*(?P<ry1>\d+)\s*:\s*"
     r"(?P<rx2>\d+)\s*,\s*(?P<ry2>\d+)(?::(?P<rlabel>[^\]]*))?\]"
+    r"|"
+    r"\[ARROW:(?P<ax1>\d+)\s*,\s*(?P<ay1>\d+)\s*:\s*"
+    r"(?P<ax2>\d+)\s*,\s*(?P<ay2>\d+)(?::(?P<alabel>[^\]:]*))?"
+    r"(?::screen(?P<ascreen>\d+))?\]"
+    r"|"
+    r"\[ADD_TASK:(?P<tdate>\d{4}-\d{2}-\d{2}):(?P<ttext>[^\]]+)\]"
+    r"|"
+    r"\[(?P<refresh>REFRESH)\]"
 )
 
 
@@ -57,6 +84,16 @@ def parse_steps(response: str) -> list[Step]:
             )
             if text:
                 steps.append(Step(text=text, region=region))
+        elif m.group("ax1") is not None:
+            arrow = ArrowTag(
+                x1=int(m.group("ax1")),
+                y1=int(m.group("ay1")),
+                x2=int(m.group("ax2")),
+                y2=int(m.group("ay2")),
+                label=m.group("alabel") or "",
+                screen=int(m.group("ascreen")) if m.group("ascreen") else None,
+            )
+            steps.append(Step(text=text, arrow=arrow))
         elif m.group("px") is not None:
             point = PointTag(
                 x=int(m.group("px")),
@@ -66,6 +103,17 @@ def parse_steps(response: str) -> list[Step]:
             )
             if text:
                 steps.append(Step(text=text, point=point))
+        elif m.group("tdate") is not None:
+            task_tag = AddTaskTag(date=m.group("tdate"), text=m.group("ttext"))
+            if text:
+                steps.append(Step(text=text, add_task=task_tag))
+            else:
+                steps.append(Step(text="", add_task=task_tag))
+        elif m.group("refresh") is not None:
+            if text:
+                steps.append(Step(text=text, refresh=True))
+            else:
+                steps.append(Step(text="", refresh=True))
         else:
             # [POINT:none] — display text only, no action
             if text:

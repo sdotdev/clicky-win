@@ -39,14 +39,14 @@ class TextInputWidget(QWidget):
 
         self.setStyleSheet(f"""
             QWidget {{
-                background-color: {DS.Colors.surface};
-                border: 1px solid {DS.Colors.accent_blue};
+                background-color: {DS.Colors.light_bg};
+                border: 1.5px solid {DS.Colors.accent_blue};
                 border-radius: 6px;
             }}
             QLineEdit {{
                 background: transparent;
                 border: none;
-                color: {DS.Colors.text_primary};
+                color: {DS.Colors.light_text};
                 padding: 2px 4px;
             }}
         """)
@@ -70,10 +70,10 @@ class TextInputWidget(QWidget):
         self._popup.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._popup.setStyleSheet(f"""
             QListWidget {{
-                background-color: {DS.Colors.surface};
-                border: 1px solid {DS.Colors.accent_blue};
+                background-color: {DS.Colors.light_bg};
+                border: 1.5px solid {DS.Colors.accent_blue};
                 border-radius: 4px;
-                color: {DS.Colors.text_primary};
+                color: {DS.Colors.light_text};
                 font-family: "Segoe UI";
                 font-size: 11px;
                 padding: 2px;
@@ -83,7 +83,7 @@ class TextInputWidget(QWidget):
                 color: white;
             }}
             QListWidget::item:hover {{
-                background-color: {DS.Colors.border};
+                background-color: {DS.Colors.light_surface};
             }}
         """)
         self._popup.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -107,13 +107,31 @@ class TextInputWidget(QWidget):
         self._anchor_x = anchor_x
         self._anchor_y = anchor_y
         self._edit.clear()
+        
+        from PySide6.QtWidgets import QApplication
+        screen = QApplication.screenAt(QPoint(anchor_x, anchor_y))
+        if screen is None:
+            screen = QApplication.primaryScreen()
+        geo = screen.geometry()
+        
+        target_w = self.WIDTH
+        target_h = self.HEIGHT
+        
+        if anchor_x + target_w > geo.right():
+            anchor_x = geo.right() - target_w
+        if anchor_y + target_h > geo.bottom():
+            anchor_y = geo.bottom() - target_h
+            
+        anchor_x = max(geo.left(), anchor_x)
+        anchor_y = max(geo.top(), anchor_y)
+
         self.setMinimumSize(0, 0)
         self.setMaximumSize(16777215, 16777215)
         self._geom_anim.stop()
         self.setGeometry(QRect(anchor_x, anchor_y, 1, 1))
         self.show()
         self._geom_anim.setStartValue(QRect(anchor_x, anchor_y, 1, 1))
-        self._geom_anim.setEndValue(QRect(anchor_x, anchor_y, self.WIDTH, self.HEIGHT))
+        self._geom_anim.setEndValue(QRect(anchor_x, anchor_y, target_w, target_h))
         self._geom_anim.start()
 
     def _on_anim_finished(self) -> None:
@@ -181,8 +199,14 @@ class TextInputWidget(QWidget):
                     return True
                 if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab):
                     item = self._popup.currentItem()
+                    if item is None and self._popup.count() > 0:
+                        item = self._popup.item(0)
                     if item is not None:
-                        self._on_popup_item_clicked(item)
+                        self._edit.setText(item.text())
+                        self._hide_popup()
+                        text = self._edit.text().strip()
+                        self.submitted.emit(text)
+                        self.hide()
                         return True
                 if event.key() == Qt.Key.Key_Escape:
                     self._hide_popup()

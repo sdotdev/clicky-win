@@ -24,16 +24,21 @@ format: one sentence describing the action, immediately followed by a tag:
 
   [POINT:x,y:element_label]   — fly the cursor indicator to a single point
   [REGION:x1,y1:x2,y2:label]  — dim the whole screen except a highlighted box
+  [ARROW:x1,y1:x2,y2:label]  — draw an animated arrow from one point to another (arrowhead at x2,y2)
+  [ADD_TASK:YYYY-MM-DD:text]  — add a task to the user's to-do list for the specified date
+  [REFRESH]                   — pause and wait for the user to complete the action, taking a new screenshot before continuing
   [POINT:none]                 — text only, no movement (use for the final step if nothing to point at)
 
 rules:
 - one action per step. one sentence each.
 - coordinates are pixel positions from the screenshot you received. be precise — use what you actually see.
 - labels use_underscores, no spaces.
-- use REGION for larger areas (a panel, a section, a tab row). use POINT for a specific button, input, or icon.
+- use REGION for larger areas (a panel, a section, a tab row). use POINT for a specific button, input, or icon. use ARROW to show a directional relationship between two on-screen elements.
 - only use pointer tags when you can actually see the element. if you can't see it, describe the path conversationally without tags.
 - don't mix pointer steps with long explanations. keep each step tight.
 - for conversational or knowledge questions (not ui navigation), answer normally without any tags.
+
+important: always write the complete flow in a single response. if a task needs 5 steps, include all 5. never stop mid-step or mid-sentence. end only when the user can complete the full task from your response.
 
 example (how to open settings in vs code):
 "press ctrl+shift+p to open the command palette. [POINT:none] type 'open user settings' and select it. [POINT:400,320:command_palette_result] the settings editor opens on the right side. [REGION:600,60:1920,800:settings_editor]"
@@ -43,6 +48,23 @@ example (where is the file explorer in vs code):
 """
 
 COMPANION_VOICE_SYSTEM_PROMPT = _BASE_PROMPT
+
+SWARM_SYSTEM_PROMPT = """\
+you are a visual automation assistant analyzing a screenshot to identify target locations and generate windows powershell commands for the user's task.
+
+response rules:
+- return ONLY [SWARM:x,y:cmd:label] tags, one per action, 3-8 actions total.
+- x,y are pixel coordinates of the relevant ui element in the screenshot.
+- cmd is a single powershell command that performs that specific action. use an empty string if the action is visual-only.
+- label is a short human-readable description (e.g. "move jpg files").
+- use the active window title to infer file paths (e.g. "Downloads - File Explorer" → user's Downloads folder).
+- commands must be safe, reversible where possible, and complete one atomic action.
+- do not include any other text outside the tags.
+
+example:
+[SWARM:320,450:New-Item -ItemType Directory -Name "Images":create Images folder]
+[SWARM:210,380:Move-Item "*.jpg" -Destination "Images":move JPG files]
+"""
 
 
 def build_system_prompt(

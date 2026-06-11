@@ -49,7 +49,8 @@ class RegionOverlayWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
-        self._target: QRectF = QRectF()  # final target region in global coords
+        self._target: QRectF = QRectF()  # final target region in widget-local coords
+        self._target_global: QRectF = QRectF() # final target region in global coords
         self._progress: float = 0.0      # 0→1 animation progress
         self._dash_offset: float = 0.0
 
@@ -98,17 +99,25 @@ class RegionOverlayWidget(QWidget):
         self._arm_timer.stop()
         self._cursor_timer.stop()
 
-        # Store the target in widget-local coords (offset by widget top-left).
-        # The widget covers the virtual desktop, so global == widget coords.
+        # Cover the full virtual desktop.
+        virtual = QApplication.primaryScreen().virtualGeometry()
+        self.setGeometry(virtual)
+
+        # Store the target in widget-local coords (offset by virtual desktop origin).
+        local_x1 = x1 - virtual.x()
+        local_y1 = y1 - virtual.y()
+        local_x2 = x2 - virtual.x()
+        local_y2 = y2 - virtual.y()
+        
         self._target = QRectF(
+            min(local_x1, local_x2), min(local_y1, local_y2),
+            abs(x2 - x1), abs(y2 - y1),
+        )
+        self._target_global = QRectF(
             min(x1, x2), min(y1, y2),
             abs(x2 - x1), abs(y2 - y1),
         )
         self._progress = 0.0
-
-        # Cover the full virtual desktop.
-        virtual = QApplication.primaryScreen().virtualGeometry()
-        self.setGeometry(virtual)
         self.show()
 
         self._anim.stop()
@@ -147,7 +156,7 @@ class RegionOverlayWidget(QWidget):
             return
         from PySide6.QtGui import QCursor
         pos = QCursor.pos()
-        if self._target.contains(float(pos.x()), float(pos.y())):
+        if self._target_global.contains(float(pos.x()), float(pos.y())):
             self._cursor_timer.stop()
             self.hide_overlay()
             self.region_entered.emit()

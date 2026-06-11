@@ -7,8 +7,22 @@ import mss
 from PIL import Image
 from pynput.mouse import Controller as MouseController
 
-_MAX_LONG_EDGE = 1280
 _JPEG_QUALITY = 80
+
+# Supported resolutions that match Computer Use model training data.
+# The closest aspect-ratio match is chosen for each captured monitor.
+_SUPPORTED_RESOLUTIONS: list[tuple[int, int]] = [
+    (1366, 768),   # 16:9
+    (1280, 720),   # 16:9
+    (1280, 800),   # 16:10
+    (1024, 768),   # 4:3
+]
+
+
+def _choose_target_resolution(width: int, height: int) -> tuple[int, int]:
+    """Return the supported resolution whose aspect ratio is closest to width/height."""
+    aspect = width / height
+    return min(_SUPPORTED_RESOLUTIONS, key=lambda r: abs(r[0] / r[1] - aspect))
 
 
 @dataclass
@@ -22,7 +36,8 @@ class ScreenshotImage:
     display_height_px: int
     image_width_px: int
     image_height_px: int
-    scale: float           # downscale ratio (e.g. 0.667 for 1920→1280). 1.0 if no downscale.
+    scale_x: float         # horizontal downscale ratio (image_w / display_w)
+    scale_y: float         # vertical downscale ratio (image_h / display_h)
     monitor_left: int      # global X origin of this monitor
     monitor_top: int       # global Y origin of this monitor
     dpi_scale: float = 1.0  # device pixel ratio from Qt (1.5 on 150%-scaled monitor)
@@ -95,16 +110,13 @@ def capture_all(qt_screens: list | None = None) -> list[ScreenshotImage]:
 
             img = Image.frombytes("RGB", (display_w, display_h), grab.rgb)
 
-            # Downscale if the long edge exceeds the limit.
-            long_edge = max(display_w, display_h)
-            if long_edge > _MAX_LONG_EDGE:
-                scale = _MAX_LONG_EDGE / long_edge
-                new_w = int(display_w * scale)
-                new_h = int(display_h * scale)
-                img = img.resize((new_w, new_h), Image.LANCZOS)
-            else:
-                scale = 1.0
+            # Normalize to the closest supported aspect-ratio resolution so the
+            # model always sees a predictable coordinate space.
+            target_w, target_h = _choose_target_resolution(display_w, display_h)
+            img = img.resize((target_w, target_h), Image.LANCZOS)
 
+            scale_x = target_w / display_w
+            scale_y = target_h / display_h
             image_w, image_h = img.size
 
             buf = io.BytesIO()
@@ -122,7 +134,8 @@ def capture_all(qt_screens: list | None = None) -> list[ScreenshotImage]:
                     display_height_px=display_h,
                     image_width_px=image_w,
                     image_height_px=image_h,
-                    scale=scale,
+                    scale_x=scale_x,
+                    scale_y=scale_y,
                     monitor_left=mon["left"],
                     monitor_top=mon["top"],
                     dpi_scale=dpi_scale,

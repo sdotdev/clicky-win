@@ -30,7 +30,7 @@ from clicky.hotkey import HotkeyMonitor
 from clicky.knowledge_base import load_kb_from_disk, match_app, select_content
 from clicky.mic_capture import MicCapture
 from clicky.point_mapper import map_point_to_screen
-from clicky.point_parser import parse_point_tag
+from clicky.point_parser import PointTag, parse_point_tag
 from clicky.prompts import build_system_prompt
 from clicky.step_parser import Step, parse_steps
 from clicky.screen_capture import ScreenshotImage
@@ -73,7 +73,9 @@ class CompanionManager(QObject):
     step_text = Signal(str)           # text for the current step (drives output widget in step mode)
     step_progress = Signal(int, int)  # (current_1indexed, total) for progress bar
     show_region_requested = Signal(int, int, int, int, str)  # x1,y1,x2,y2,label
+    show_arrow_requested = Signal(int, int, int, int)        # x1,y1,x2,y2
     success_turn_completed = Signal()
+    steps_complete = Signal()  # all guided steps finished
     error = Signal(str)
 
     def __init__(
@@ -166,6 +168,7 @@ class CompanionManager(QObject):
             self._speak_task.cancel()
         self._step_index += 1
         if self._step_index >= len(self._steps):
+            self.steps_complete.emit()
             self._set_state(VoiceState.IDLE)
             return
         self._show_step(self._step_index)
@@ -179,22 +182,81 @@ class CompanionManager(QObject):
             r = step.region
             self.show_region_requested.emit(r.x1, r.y1, r.x2, r.y2, r.label)
             logger.info("step %d REGION: (%d,%d)→(%d,%d) label=%s", index, r.x1, r.y1, r.x2, r.y2, r.label)
+        elif step.arrow is not None:
+            a = step.arrow
+            p1 = PointTag(x=a.x1, y=a.y1, label="", screen=a.screen)
+            p2 = PointTag(x=a.x2, y=a.y2, label="", screen=a.screen)
+            c1 = map_point_to_screen(p1, self._current_screenshots)
+            c2 = map_point_to_screen(p2, self._current_screenshots)
+            if c1 is not None and c2 is not None:
+                self.show_arrow_requested.emit(c1[0], c1[1], c2[0], c2[1])
+                logger.info("step %d ARROW: (%d,%d)→(%d,%d) label=%s", index, c1[0], c1[1], c2[0], c2[1], a.label)
+            self.advance_step()
         elif step.point is not None:
             coords = map_point_to_screen(step.point, self._current_screenshots)
             if coords is not None:
                 self._panel_visibility_controller.fly_to(coords[0], coords[1])
                 logger.info("step %d POINT: (%d, %d) label=%s", index, coords[0], coords[1], step.point.label)
+        elif step.refresh:
+            if step.text:
+                self.step_text.emit(step.text)
+            
+            async def _refresh_flow():
+                if step.text:
+                    if self._config.tts_enabled:
+                        try:
+                            await self._tts.speak(step.text)
+                        except Exception as e:
+                            logger.error("tts error: %s", e)
+                    else:
+                        await asyncio.sleep(max(2.0, len(step.text) * 0.05))
+                if self._current_task is not None and not self._current_task.done():
+                    self._current_task.cancel()
+                self._cancel_flag = False
+                self._current_task = asyncio.ensure_future(self._run_turn("I completed the step, continue."))
+            
+            asyncio.ensure_future(_refresh_flow())
+
+        elif step.add_task is not None:
+            from clicky.tasks_store import add_task
+            add_task(step.add_task.text, step.add_task.date)
+            
+            if step.text:
+                self.step_text.emit(step.text)
+                
+            async def _add_task_flow():
+                if step.text:
+                    if self._config.tts_enabled:
+                        try:
+                            await self._tts.speak(step.text)
+                        except Exception as e:
+                            logger.error("tts error: %s", e)
+                    else:
+                        await asyncio.sleep(max(2.0, len(step.text) * 0.05))
+                self.advance_step()
+                
+            asyncio.ensure_future(_add_task_flow())
+
         else:
-            # Final step (no action) — go idle after TTS or brief dwell.
-            if self._config.tts_enabled:
-                self._speak_task = asyncio.ensure_future(self._speak(step.text))
+            is_last = (index + 1 >= len(self._steps))
+            if is_last:
+                # Final step — go idle after TTS or brief dwell.
+                if self._config.tts_enabled:
+                    self._speak_task = asyncio.ensure_future(self._speak(step.text))
+                else:
+                    delay = max(2.0, len(step.text) * 0.05) if step.text else 0.4
+                    asyncio.ensure_future(self._delayed_idle(delay))
             else:
-                asyncio.ensure_future(self._delayed_idle(0.4))
+                # Intermediate text-only step — auto-advance after dwell.
+                delay = max(3.0, len(step.text) * 0.05) if step.text else 0.5
+                asyncio.ensure_future(self._delayed_advance(delay))
 
     def handle_text_input(self, text: str) -> None:
         """Inject typed text directly into the turn pipeline (skip mic/STT)."""
         if not text.strip():
             return
+        if self._current_task is not None and not self._current_task.done():
+            self._current_task.cancel()
         self._cancel_flag = False
         self._current_task = asyncio.ensure_future(self._run_turn(text))
 
@@ -409,7 +471,21 @@ class CompanionManager(QObject):
                 else:
                     logger.debug("no KB match for window: %s", window_title)
 
-            system_prompt = build_system_prompt(kb_content, app_name, task_context=self._context_addendum or None)
+            from clicky.tasks_store import tasks_for_date
+            from datetime import date
+            tasks = tasks_for_date(date.today().isoformat())
+            if tasks:
+                tasks_ctx = "User's tasks for today:\n" + "\n".join(f"  {i+1}. [{'x' if t.done else ' '}] {t.text}" for i, t in enumerate(tasks))
+            else:
+                tasks_ctx = "The user has no tasks for today."
+                
+            ctx_str = tasks_ctx
+            if self._context_addendum:
+                ctx_str += "\n\n" + self._context_addendum
+
+            system_prompt = build_system_prompt(
+                kb_content, app_name, ctx_str
+            )
             self._context_addendum = ""  # clear after use
 
             # Transition to RESPONDING.
@@ -420,6 +496,7 @@ class CompanionManager(QObject):
                 messages,
                 system=system_prompt,
                 model=self._current_model,
+                max_tokens=4096,
             )
 
             # Only commit to history and emit completion if not cancelled.
@@ -449,3 +526,9 @@ class CompanionManager(QObject):
         await asyncio.sleep(delay)
         if self._state == VoiceState.RESPONDING and not self._cancel_flag:
             self._set_state(VoiceState.IDLE)
+
+    async def _delayed_advance(self, delay: float) -> None:
+        """Advance to next step after a dwell — used for text-only intermediate steps."""
+        await asyncio.sleep(delay)
+        if not self._cancel_flag:
+            self.advance_step()

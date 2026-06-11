@@ -4,6 +4,7 @@ from clicky.commands.router import CommandContext
 from clicky import tasks_store
 
 
+
 def handle_tasks(args: str, ctx: CommandContext) -> None:
     args = args.strip()
     if ctx.tasks_window is None:

@@ -17,7 +17,6 @@ from PySide6.QtGui import (
     QPainter,
     QPainterPath,
     QPen,
-    QRadialGradient,
 )
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -201,26 +200,14 @@ class FocusOverlayWidget(QWidget):
         ip.fillRect(0, 0, w, h, QColor(0, 0, 0, dim))
 
         if rect is not None:
-            # Punch a hole using CompositionMode_Source with transparent fill
+            # Punch the spotlight hole: CompositionMode_Source with a fully
+            # transparent brush erases the veil inside the rounded rect.
             ip.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
-            # Feathered hole: gradient from transparent (center) to dark (edge)
-            # Use 3 gradient stops to feather the edge
-            pad = 40.0  # feather width
-            cx = rect.x() + rect.width() / 2
-            cy = rect.y() + rect.height() / 2
-            # For rectangular spotlight, use linear gradients on each side
-            # Simpler: use a soft rounded rect punch-out
             hole = QPainterPath()
             hole.addRoundedRect(rect, 16, 16)
-            ip.setBrush(QColor(0, 0, 0, 0))  # fully transparent = punch hole
+            ip.setBrush(QColor(0, 0, 0, 0))
             ip.setPen(Qt.PenStyle.NoPen)
             ip.drawPath(hole)
-
-            # Soft feather: draw gradient rings at the edge
-            ip.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-            # Draw a slightly-larger rounded rect with a gradient that fades from
-            # opaque (outer) to transparent (inner = keep the hole)
-            # Actually just skip complex feathering and use a simple linear border blend
             ip.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
         ip.end()
@@ -230,8 +217,7 @@ class FocusOverlayWidget(QWidget):
         if rect is not None:
             alpha = self._dim_alpha
             # Outer glow (neon cyan)
-            from clicky.design_system import hex_to_rgb
-            from clicky.design_system import DS
+            from clicky.design_system import DS, hex_to_rgb
             cr, cg, cb = hex_to_rgb(DS.Colors.neon_cyan)
 
             # Multi-pass glow: 3 passes with increasing width, decreasing alpha

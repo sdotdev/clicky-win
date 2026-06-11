@@ -216,6 +216,9 @@ def run() -> int:
         handle_scan("", ctx)
 
     tray_icon.neon_scan_requested.connect(_on_neon_scan_requested)
+    tray_icon.focus_toggled.connect(focus_overlay.toggle)
+    tray_icon.heatmap_toggled.connect(heatmap_overlay.toggle)
+    tray_icon.clipboard_ring_requested.connect(clipboard_ring.show_ring)
 
     hotkey_binding = result.config.hotkey if result.config is not None else "ctrl+alt"
     hotkey_monitor = HotkeyMonitor(binding=hotkey_binding)
@@ -492,6 +495,8 @@ def run() -> int:
     result.app.aboutToQuit.connect(output_capture.stop)
     result.app.aboutToQuit.connect(shake_detector.stop)
     result.app.aboutToQuit.connect(lambda: power_mode.set_enabled(False))
+    result.app.aboutToQuit.connect(lambda: heatmap_overlay.set_enabled(False))
+    result.app.aboutToQuit.connect(lambda: focus_overlay.set_enabled(False))
 
     loop = qasync.QEventLoop(result.app)
     asyncio.set_event_loop(loop)

@@ -80,7 +80,7 @@ class _Agent:
     pos: QPointF
     vel: QPointF
     target: QPointF
-    action: "SwarmAction"
+    action: SwarmAction
     opacity: float = 0.0
     angle: float = 0.0
     trail: list = field(default_factory=list)

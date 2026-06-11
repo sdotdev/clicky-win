@@ -10,7 +10,6 @@ from __future__ import annotations
 import math
 import sys
 import time
-from collections import deque
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient

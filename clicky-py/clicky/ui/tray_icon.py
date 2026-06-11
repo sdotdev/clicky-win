@@ -46,6 +46,9 @@ class TrayIcon(QSystemTrayIcon):
     power_mode_toggled = Signal()
     celebrate_requested = Signal()
     neon_scan_requested = Signal()
+    focus_toggled = Signal()
+    heatmap_toggled = Signal()
+    clipboard_ring_requested = Signal()
 
     def __init__(self, config_path: Path | None = None) -> None:
         super().__init__()
@@ -75,6 +78,15 @@ class TrayIcon(QSystemTrayIcon):
         scan_action = QAction("Neon Scan  🛰", effects_menu)
         scan_action.triggered.connect(lambda: self.neon_scan_requested.emit())
         effects_menu.addAction(scan_action)
+        focus_action = QAction("Toggle Focus Spotlight  ◈", effects_menu)
+        focus_action.triggered.connect(lambda: self.focus_toggled.emit())
+        effects_menu.addAction(focus_action)
+        heatmap_action = QAction("Toggle Click Heatmap  🔥", effects_menu)
+        heatmap_action.triggered.connect(lambda: self.heatmap_toggled.emit())
+        effects_menu.addAction(heatmap_action)
+        clipboard_action = QAction("Clipboard Ring  📋", effects_menu)
+        clipboard_action.triggered.connect(lambda: self.clipboard_ring_requested.emit())
+        effects_menu.addAction(clipboard_action)
         menu.addMenu(effects_menu)
 
         history_action = QAction("Show History", menu)

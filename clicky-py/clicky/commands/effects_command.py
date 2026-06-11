@@ -3,6 +3,9 @@
 ``/power``     — toggle Power Mode (particle cursor + combo meter).
 ``/celebrate`` — fire a fireworks + confetti burst.
 ``/scan``      — run the Neon Scan HUD (AI vision, or demo mode).
+``/focus``     — toggle Focus Spotlight (dims everything except active window).
+``/heatmap``   — toggle Live Click Heatmap overlay.
+``/clipboard`` — show Clipboard Ring HUD.
 
 These read widgets/config off the :class:`CommandContext`, which app.py
 populates. Real-mode scanning is async; demo mode is instant and offline.
@@ -137,3 +140,36 @@ async def _run_live_scan(widget, mgr, companion) -> None:  # noqa: ANN001
         _start_demo(widget)
         return
     widget.start(boxes, demo=False)
+
+
+def handle_focus(args: str, ctx: CommandContext) -> None:
+    widget = getattr(ctx, "focus_overlay", None)
+    if widget is None:
+        return
+    arg = args.strip().lower()
+    if arg in ("on", "start", "enable"):
+        widget.set_enabled(True)
+    elif arg in ("off", "stop", "disable"):
+        widget.set_enabled(False)
+    else:
+        widget.toggle()
+
+
+def handle_heatmap(args: str, ctx: CommandContext) -> None:
+    widget = getattr(ctx, "heatmap_overlay", None)
+    if widget is None:
+        return
+    arg = args.strip().lower()
+    if arg in ("on", "start", "enable"):
+        widget.set_enabled(True)
+    elif arg in ("off", "stop", "disable"):
+        widget.set_enabled(False)
+    else:
+        widget.toggle()
+
+
+def handle_clipboard(args: str, ctx: CommandContext) -> None:
+    widget = getattr(ctx, "clipboard_ring", None)
+    if widget is None:
+        return
+    widget.show_ring()

@@ -12,10 +12,10 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPolygonF
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPolygonF, QRadialGradient
 from PySide6.QtWidgets import QApplication, QWidget
 
-from clicky.design_system import DS
+from clicky.design_system import DS, hex_to_rgb
 from clicky.ui.win32_transparency import apply_win32_transparency
 
 if TYPE_CHECKING:
@@ -188,6 +188,8 @@ class SwarmOverlayWidget(QWidget):
                 _reposition_offset=float(i * ((_REPOSITION_MIN_MS + _REPOSITION_MAX_MS) / 2 / n)),
             )
             agent._init_target = init_target  # type: ignore[attr-defined]
+            palette_color = DS.POWER_PALETTE[i % len(DS.POWER_PALETTE)]
+            agent._color_rgb = hex_to_rgb(palette_color)  # type: ignore[attr-defined]
             self._agents.append(agent)
 
         self.setGeometry(virtual)
@@ -409,6 +411,22 @@ class SwarmOverlayWidget(QWidget):
         for arrow in self._flash_arrows:
             self._paint_flash_arrow(painter, arrow, accent)
 
+        # Orbit ring — faint dashed circle when agents are orbiting
+        if self._phase == _Phase.ORBIT:
+            ring_color = QColor(DS.Colors.neon_cyan)
+            ring_color.setAlpha(35)
+            ring_pen = QPen(ring_color)
+            ring_pen.setWidthF(1.5)
+            ring_pen.setStyle(Qt.PenStyle.CustomDashLine)
+            ring_pen.setDashPattern([4, 8])
+            painter.setPen(ring_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(
+                self._orbit_anchor,
+                float(_ORBIT_RADIUS),
+                float(_ORBIT_RADIUS),
+            )
+
         # Agents on top
         painter.setPen(Qt.PenStyle.NoPen)
         for agent in self._agents:
@@ -430,6 +448,13 @@ class SwarmOverlayWidget(QWidget):
         color = QColor(_REGION_BORDER)
         color.setAlpha(alpha)
 
+        # Very faint fill inside the dashed rect
+        fill_color = QColor("#FF6B00")
+        fill_color.setAlpha(int(region.opacity * 18))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(fill_color)
+        painter.drawRect(rect)
+
         pen = QPen(color)
         pen.setWidthF(2.0)
         pen.setStyle(Qt.PenStyle.CustomDashLine)
@@ -449,6 +474,17 @@ class SwarmOverlayWidget(QWidget):
         path.moveTo(arrow.sx, arrow.sy)
         path.quadTo(arrow.ctrl_x, arrow.ctrl_y, arrow.ex, arrow.ey)
 
+        # Glow pass — wide, low-alpha stroke
+        glow_color = QColor(accent)
+        glow_color.setAlpha(int(arrow.opacity * 60))
+        glow_pen = QPen(glow_color)
+        glow_pen.setWidthF(8.0)
+        glow_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(glow_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(path)
+
+        # Crisp thin pass
         pen = QPen(color)
         pen.setWidthF(2.0)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -470,27 +506,60 @@ class SwarmOverlayWidget(QWidget):
         w1 = QPointF(bx + px * head_wing, by + py * head_wing)
         w2 = QPointF(bx - px * head_wing, by - py * head_wing)
 
+        # Glow pass arrowhead — slightly larger, low-alpha
+        glow_head_color = QColor(accent)
+        glow_head_color.setAlpha(int(arrow.opacity * 40))
+        glow_scale = 1.35
+        bxg = arrow.ex - nx * head_size * glow_scale
+        byg = arrow.ey - ny * head_size * glow_scale
+        wg1 = QPointF(bxg + px * head_wing * glow_scale, byg + py * head_wing * glow_scale)
+        wg2 = QPointF(bxg - px * head_wing * glow_scale, byg - py * head_wing * glow_scale)
         painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(glow_head_color)
+        painter.drawPolygon(QPolygonF([tip, wg1, wg2]))
+
+        # Crisp arrowhead
         painter.setBrush(color)
         painter.drawPolygon(QPolygonF([tip, w1, w2]))
 
     def _paint_agent(self, painter: QPainter, agent: _Agent, accent: QColor) -> None:
         a = int(agent.opacity * 220)
 
-        # Small trail dots
+        # Per-agent color from palette (fall back to accent_blue if not set)
+        color_rgb: tuple[int, int, int] = getattr(agent, "_color_rgb", None) or (
+            accent.red(), accent.green(), accent.blue()
+        )
+        agent_color = QColor(color_rgb[0], color_rgb[1], color_rgb[2])
+
+        cx, cy = agent.pos.x(), agent.pos.y()
+
+        # Small trail dots (use agent color)
         for i, tp in enumerate(agent.trail):
             t = (i + 1) / max(len(agent.trail), 1)
             ta = int(t * agent.opacity * 70)
             tr = 0.5 + t * 1.5
-            tc = QColor(accent)
+            tc = QColor(agent_color)
             tc.setAlpha(ta)
             painter.setBrush(tc)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(tp, tr, tr)
+
+        # Glow halo — QRadialGradient behind triangle
+        halo_radius = _GHOST_TRI_SIZE * 2.2
+        grad = QRadialGradient(cx, cy, halo_radius)
+        halo_inner = QColor(color_rgb[0], color_rgb[1], color_rgb[2], int(90 * agent.opacity))
+        halo_outer = QColor(color_rgb[0], color_rgb[1], color_rgb[2], 0)
+        grad.setColorAt(0.0, halo_inner)
+        grad.setColorAt(1.0, halo_outer)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
+        painter.setBrush(grad)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(QPointF(cx, cy), halo_radius, halo_radius)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
         # Triangle — regular companion size, pointing in direction of travel
         h = _GHOST_TRI_SIZE
         w = h * 0.866
-        cx, cy = agent.pos.x(), agent.pos.y()
 
         tri_angle = agent.angle + math.pi
         tip_x = cx + w * 0.5 * math.cos(tri_angle)
@@ -502,11 +571,44 @@ class SwarmOverlayWidget(QWidget):
         b2x = cx + h * 0.4 * math.cos(b2a)
         b2y = cy + h * 0.4 * math.sin(b2a)
 
-        tc = QColor(accent)
+        tc = QColor(agent_color)
         tc.setAlpha(a)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(tc)
         painter.drawPolygon(QPolygonF([
             QPointF(tip_x, tip_y),
             QPointF(b1x, b1y),
             QPointF(b2x, b2y),
         ]))
+
+        # Action label chip — 20px above agent center, if label is non-empty
+        label_text = agent.action.label
+        if label_text:
+            if len(label_text) > 14:
+                label_text = label_text[:13] + "…"
+            from PySide6.QtGui import QFont, QFontMetricsF
+            chip_font = QFont("Consolas", 9)
+            chip_font.setBold(True)
+            painter.setFont(chip_font)
+            fm = QFontMetricsF(chip_font)
+            text_w = fm.horizontalAdvance(label_text)
+            text_h = fm.height()
+            pad_x, pad_y = 5.0, 3.0
+            chip_w = text_w + pad_x * 2
+            chip_h = text_h + pad_y * 2
+            chip_x = cx - chip_w * 0.5
+            chip_y = cy - 20 - chip_h
+            chip_rect = QRectF(chip_x, chip_y, chip_w, chip_h)
+
+            # Chip background using agent color, semi-transparent
+            chip_bg = QColor(agent_color)
+            chip_bg.setAlpha(int(agent.opacity * 200))
+            painter.setBrush(chip_bg)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(chip_rect, 3, 3)
+
+            # Dark text
+            text_color = QColor("#0b0d12")
+            text_color.setAlpha(int(agent.opacity * 230))
+            painter.setPen(text_color)
+            painter.drawText(chip_rect, Qt.AlignmentFlag.AlignCenter, label_text)

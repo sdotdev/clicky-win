@@ -54,12 +54,18 @@ from clicky.ui.text_input_widget import TextInputWidget
 from clicky.ui.power_mode_widget import PowerModeWidget
 from clicky.ui.celebration_widget import CelebrationWidget
 from clicky.ui.neon_scan_widget import NeonScanWidget
+from clicky.ui.focus_overlay_widget import FocusOverlayWidget
+from clicky.ui.heatmap_overlay_widget import HeatmapOverlayWidget
+from clicky.ui.clipboard_ring_widget import ClipboardRingWidget
 from clicky.shake_detector import ShakeDetector
 from clicky.ui.tray_icon import TrayIcon
 from clicky.commands.router import CommandContext, CommandRouter
 from clicky.commands.tasks_command import handle_tasks
 from clicky.commands.swarm_command import handle_swarm
-from clicky.commands.effects_command import handle_power, handle_celebrate, handle_scan
+from clicky.commands.effects_command import (
+    handle_power, handle_celebrate, handle_scan,
+    handle_focus, handle_heatmap, handle_clipboard,
+)
 from clicky.ui.tasks_window import TasksWindow
 
 APP_NAME = "ClickyWin"
@@ -148,6 +154,9 @@ def run() -> int:
     power_mode = PowerModeWidget()
     celebration = CelebrationWidget()
     neon_scan = NeonScanWidget()
+    focus_overlay = FocusOverlayWidget()
+    heatmap_overlay = HeatmapOverlayWidget()
+    clipboard_ring = ClipboardRingWidget()
 
     router = CommandRouter()
     router.register("tasks", handle_tasks)
@@ -155,6 +164,9 @@ def run() -> int:
     router.register("power", handle_power)
     router.register("celebrate", handle_celebrate)
     router.register("scan", handle_scan)
+    router.register("focus", handle_focus)
+    router.register("heatmap", handle_heatmap)
+    router.register("clipboard", handle_clipboard)
     text_input.set_commands(router.command_names())
 
     companion.fly_started.connect(comet_trail.show_trail)
@@ -196,6 +208,9 @@ def run() -> int:
             companion_manager=_manager[0],
             companion=companion,
             neon_scan=neon_scan,
+            focus_overlay=focus_overlay,
+            heatmap_overlay=heatmap_overlay,
+            clipboard_ring=clipboard_ring,
             config=_cfg[0],
         )
         handle_scan("", ctx)
@@ -445,6 +460,9 @@ def run() -> int:
             power_mode=power_mode,
             celebration=celebration,
             neon_scan=neon_scan,
+            focus_overlay=focus_overlay,
+            heatmap_overlay=heatmap_overlay,
+            clipboard_ring=clipboard_ring,
             config=_cfg[0],
         )
         if router.dispatch(text, ctx):

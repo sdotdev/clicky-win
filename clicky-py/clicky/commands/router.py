@@ -14,6 +14,9 @@ class CommandContext:
     power_mode: Any = None          # PowerModeWidget | None
     celebration: Any = None         # CelebrationWidget | None
     neon_scan: Any = None           # NeonScanWidget | None
+    focus_overlay: Any = None       # FocusOverlayWidget | None
+    heatmap_overlay: Any = None     # HeatmapOverlayWidget | None
+    clipboard_ring: Any = None      # ClipboardRingWidget | None
     config: Any = None              # Config | None
 
 

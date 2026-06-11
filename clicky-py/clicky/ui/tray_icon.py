@@ -42,6 +42,10 @@ class TrayIcon(QSystemTrayIcon):
     # Emitted when the user switches a provider via the Models menu.
     # app.py connects this to reinitialize the AI clients.
     provider_changed = Signal()
+    # Viral effect triggers.
+    power_mode_toggled = Signal()
+    celebrate_requested = Signal()
+    neon_scan_requested = Signal()
 
     def __init__(self, config_path: Path | None = None) -> None:
         super().__init__()
@@ -59,6 +63,19 @@ class TrayIcon(QSystemTrayIcon):
         if config_path is not None:
             models_menu = self._build_models_menu(menu)
             menu.addMenu(models_menu)
+
+        # Effects submenu — viral visual overlays.
+        effects_menu = QMenu("Effects", menu)
+        power_action = QAction("Toggle Power Mode  ⚡", effects_menu)
+        power_action.triggered.connect(lambda: self.power_mode_toggled.emit())
+        effects_menu.addAction(power_action)
+        celebrate_action = QAction("Celebrate  🎆", effects_menu)
+        celebrate_action.triggered.connect(lambda: self.celebrate_requested.emit())
+        effects_menu.addAction(celebrate_action)
+        scan_action = QAction("Neon Scan  🛰", effects_menu)
+        scan_action.triggered.connect(lambda: self.neon_scan_requested.emit())
+        effects_menu.addAction(scan_action)
+        menu.addMenu(effects_menu)
 
         history_action = QAction("Show History", menu)
         history_action.triggered.connect(lambda: self.show_history_requested.emit())

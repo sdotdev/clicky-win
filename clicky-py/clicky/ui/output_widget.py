@@ -28,8 +28,9 @@ class OutputWidget(QWidget):
         self.setStyleSheet(f"""
             QWidget#OutputWidget {{
                 background-color: {DS.Colors.light_bg};
-                border-radius: 8px;
-                border: 1px solid {DS.Colors.light_border};
+                border-radius: {DS.CornerRadius.medium}px;
+                border: 1px solid {DS.Colors.border_bright};
+                border-top: 2px solid {DS.Colors.accent_blue};
             }}
         """)
 
@@ -37,10 +38,35 @@ class OutputWidget(QWidget):
         self._text_edit.setReadOnly(True)
         self._text_edit.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self._text_edit.setFont(QFont("Segoe UI", 10))
-        self._text_edit.setStyleSheet(
-            f"background: transparent; color: {DS.Colors.light_text}; border: none; padding: 8px;"
-        )
+        _font = QFont("Segoe UI", 12)
+        _font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+        _font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 100.5)
+        self._text_edit.setFont(_font)
+        # Looser line spacing via document margin for a more readable, premium feel.
+        self._text_edit.document().setDocumentMargin(14)
+        self._text_edit.setStyleSheet(f"""
+            QPlainTextEdit {{
+                background: transparent;
+                color: {DS.Colors.light_text};
+                border: none;
+                padding: 4px 6px;
+                selection-background-color: {DS.Colors.accent_blue};
+                selection-color: {DS.Colors.text_white};
+            }}
+            QScrollBar:vertical {{
+                background: transparent;
+                width: 8px;
+                margin: 2px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {DS.Colors.border_strong};
+                border-radius: 4px;
+                min-height: 24px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+        """)
 
         self._progress_bar = QProgressBar(self)
         self._progress_bar.setTextVisible(True)
@@ -48,18 +74,24 @@ class OutputWidget(QWidget):
         self._progress_bar.setFixedHeight(16)
         self._progress_bar.setStyleSheet(f"""
             QProgressBar {{
-                background-color: {DS.Colors.light_surface};
-                border: none;
-                border-radius: 4px;
-                margin: 0px 8px 6px 8px;
-                color: {DS.Colors.light_text_secondary};
+                background-color: {DS.Colors.surface};
+                border: 1px solid {DS.Colors.border};
+                border-radius: 8px;
+                margin: 0px 12px 10px 12px;
+                color: {DS.Colors.text_secondary};
                 text-align: center;
                 font-size: 11px;
-                font-weight: bold;
+                font-weight: 600;
             }}
             QProgressBar::chunk {{
-                background-color: {DS.Colors.accent_blue};
-                border-radius: 4px;
+                background-color: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {DS.Colors.accent_blue},
+                    stop:0.5 {DS.Colors.accent_indigo},
+                    stop:1 {DS.Colors.accent_violet}
+                );
+                border-radius: 7px;
+                margin: 1px;
             }}
         """)
         self._progress_bar.hide()
@@ -68,12 +100,14 @@ class OutputWidget(QWidget):
         self._close_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
-                color: {DS.Colors.light_text_secondary};
+                color: {DS.Colors.text_muted};
                 border: none;
+                border-radius: 12px;
                 font-size: 16px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
+                background: {DS.Colors.surface_hover};
                 color: {DS.Colors.light_text};
             }}
         """)

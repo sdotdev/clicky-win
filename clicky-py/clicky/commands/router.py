@@ -11,6 +11,10 @@ class CommandContext:
     companion_manager: Any = None   # CompanionManager | None
     companion: Any = None           # CompanionWidget | None
     swarm_overlay: Any = None       # SwarmOverlayWidget | None
+    power_mode: Any = None          # PowerModeWidget | None
+    celebration: Any = None         # CelebrationWidget | None
+    neon_scan: Any = None           # NeonScanWidget | None
+    config: Any = None              # Config | None
 
 
 class CommandRouter:

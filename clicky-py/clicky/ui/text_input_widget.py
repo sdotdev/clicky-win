@@ -39,16 +39,23 @@ class TextInputWidget(QWidget):
 
         self.setStyleSheet(f"""
             QWidget {{
-                background-color: {DS.Colors.light_bg};
+                background-color: {DS.Colors.panel_bg_alt};
+                border: 1.5px solid {DS.Colors.border_bright};
+                border-radius: 8px;
+            }}
+            QWidget:focus-within {{
                 border: 1.5px solid {DS.Colors.accent_blue};
-                border-radius: 6px;
             }}
             QLineEdit {{
                 background: transparent;
                 border: none;
                 color: {DS.Colors.light_text};
-                padding: 2px 4px;
+                padding: 5px 10px;
+                font-size: 13px;
+                selection-background-color: {DS.Colors.accent_blue};
+                selection-color: {DS.Colors.text_white};
             }}
+            QLineEdit::placeholder {{ color: {DS.Colors.text_muted}; }}
         """)
 
         self._geom_anim = QPropertyAnimation(self, b"geometry")
@@ -70,20 +77,27 @@ class TextInputWidget(QWidget):
         self._popup.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._popup.setStyleSheet(f"""
             QListWidget {{
-                background-color: {DS.Colors.light_bg};
-                border: 1.5px solid {DS.Colors.accent_blue};
-                border-radius: 4px;
+                background-color: {DS.Colors.panel_bg_alt};
+                border: 1.5px solid {DS.Colors.border_bright};
+                border-radius: 8px;
                 color: {DS.Colors.light_text};
                 font-family: "Segoe UI";
-                font-size: 11px;
-                padding: 2px;
+                font-size: 12px;
+                padding: 4px;
+                outline: none;
+            }}
+            QListWidget::item {{
+                padding: 6px 10px;
+                border-radius: 6px;
+                margin: 1px 0;
             }}
             QListWidget::item:selected {{
                 background-color: {DS.Colors.accent_blue};
-                color: white;
+                color: {DS.Colors.text_white};
             }}
             QListWidget::item:hover {{
-                background-color: {DS.Colors.light_surface};
+                background-color: {DS.Colors.surface_hover};
+                color: {DS.Colors.text_white};
             }}
         """)
         self._popup.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)

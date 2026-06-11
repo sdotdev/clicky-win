@@ -15,10 +15,17 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QColor, QCursor, QPainter, QPolygonF, QRadialGradient
+from PySide6.QtGui import (
+    QColor,
+    QCursor,
+    QLinearGradient,
+    QPainter,
+    QPolygonF,
+    QRadialGradient,
+)
 from PySide6.QtWidgets import QApplication, QWidget
 
-from clicky.design_system import DS
+from clicky.design_system import DS, lerp_color
 from clicky.state import VoiceState
 from clicky.ui.companion_position import compute_position, should_update
 from clicky.ui.waveform_bars import compute_bar_heights
@@ -613,24 +620,40 @@ class CompanionWidget(QWidget):
         tri_cx = w * 0.4
         tri_cy = h * 0.4
 
-        # Draw aura (subtle radial glow behind triangle)
-        aura_r = tri_size * self.AURA_RADIUS_FACTOR
-        aura_color = QColor(base_color)
-        aura_color.setAlphaF(self.AURA_OPACITY * self._opacity)
-        gradient = QRadialGradient(QPointF(tri_cx, tri_cy), aura_r)
-        gradient.setColorAt(0.0, aura_color)
-        transparent = QColor(base_color)
-        transparent.setAlphaF(0.0)
-        gradient.setColorAt(1.0, transparent)
-        painter.setBrush(gradient)
-        painter.drawEllipse(QPointF(tri_cx, tri_cy), aura_r, aura_r)
+        # Draw multi-layer outer glow behind triangle (richer than a single aura).
+        # Three stacked radial passes: a wide soft halo, a mid bloom, and a tight
+        # hot core — together they read as a soft volumetric glow.
+        glow_center = QPointF(tri_cx, tri_cy)
+        # Glow tint: lift toward the bright end of the accent ramp so the core
+        # reads as hot rather than a flat colour blob.
+        glow_hex = (
+            DS.Colors.accent_blue_bright
+            if (self._state == VoiceState.LISTENING
+                or (not self._error_flash and not self._pulse_color))
+            else base_color
+        )
+        glow_layers = (
+            (self.AURA_RADIUS_FACTOR * 2.1, 0.09, base_color),    # wide soft halo
+            (self.AURA_RADIUS_FACTOR * 1.3, 0.18, base_color),    # mid bloom
+            (self.AURA_RADIUS_FACTOR * 0.72, 0.34, glow_hex),     # tight hot core
+        )
+        for radius_factor, peak_alpha, tint in glow_layers:
+            glow_r = tri_size * radius_factor
+            grad = QRadialGradient(glow_center, glow_r)
+            inner = QColor(tint)
+            inner.setAlphaF(peak_alpha * self._opacity)
+            mid = QColor(tint)
+            mid.setAlphaF(peak_alpha * 0.4 * self._opacity)
+            outer = QColor(tint)
+            outer.setAlphaF(0.0)
+            grad.setColorAt(0.0, inner)
+            grad.setColorAt(0.45, mid)
+            grad.setColorAt(1.0, outer)
+            painter.setBrush(grad)
+            painter.drawEllipse(glow_center, glow_r, glow_r)
 
         # Draw 45°-rotated triangle pointing toward cursor (upper-left)
         # Tip at top-left, two base vertices fan out
-        color = QColor(base_color)
-        color.setAlphaF(self._opacity)
-        painter.setBrush(color)
-
         angle = math.radians(225)  # point upper-left (toward cursor)
         tip_x = tri_cx + w * 0.5 * math.cos(angle)
         tip_y = tri_cy + w * 0.5 * math.sin(angle)
@@ -640,6 +663,30 @@ class CompanionWidget(QWidget):
         base1_y = tri_cy + h * 0.4 * math.sin(base_angle_1)
         base2_x = tri_cx + h * 0.4 * math.cos(base_angle_2)
         base2_y = tri_cy + h * 0.4 * math.sin(base_angle_2)
+
+        # Smooth gradient fill running from the bright tip down through the accent
+        # ramp toward the base — gives the triangle depth instead of a flat blob.
+        tri_grad = QLinearGradient(QPointF(tip_x, tip_y), QPointF(base1_x, base1_y))
+        if self._state == VoiceState.LISTENING or (
+            not self._error_flash and not self._pulse_color
+        ):
+            # Idle / listening: electric-blue → violet accent ramp with a hot tip.
+            top = QColor(DS.Colors.accent_blue_bright)
+            mid_c = QColor(base_color)
+            end = QColor(DS.Colors.accent_violet)
+        else:
+            # State colours (processing/responding/error): tint the same colour
+            # from a bright highlight down to the base for a glossy look.
+            top = QColor(base_color).lighter(135)
+            mid_c = QColor(base_color)
+            end = QColor(base_color).darker(118)
+        top.setAlphaF(self._opacity)
+        mid_c.setAlphaF(self._opacity)
+        end.setAlphaF(self._opacity)
+        tri_grad.setColorAt(0.0, top)
+        tri_grad.setColorAt(0.5, mid_c)
+        tri_grad.setColorAt(1.0, end)
+        painter.setBrush(tri_grad)
 
         triangle = QPolygonF(
             [
@@ -680,20 +727,44 @@ class CompanionWidget(QWidget):
         total_bar_width = self.WAVEFORM_WIDTH - (self.WAVEFORM_GAP * (self.WAVEFORM_BAR_COUNT - 1))
         bar_w = total_bar_width / self.WAVEFORM_BAR_COUNT
 
-        color = QColor(DS.Colors.companion_listening)
-        color.setAlphaF(self._opacity * self._scale)  # fade with scale
-        painter.setBrush(color)
-
+        alpha = self._opacity * self._scale  # fade with scale
         x = tri_offset
-        for bar_h in bar_heights:
+        n = max(1, self.WAVEFORM_BAR_COUNT - 1)
+        for i, bar_h in enumerate(bar_heights):
             h = bar_h * self._scale  # scale height with animation
             if h < self.WAVEFORM_MIN_HEIGHT:
                 h = self.WAVEFORM_MIN_HEIGHT * self._scale
             y = cy - h / 2
-            painter.drawRoundedRect(
-                QRectF(x, y, bar_w, h), 2, 2
+            # Per-bar hue walks the accent ramp (cyan→blue→violet) across the
+            # waveform so the bars feel cohesive with the triangle, not flat.
+            top_hex = lerp_color(DS.Colors.accent_cyan, DS.Colors.accent_blue_bright, i / n)
+            bot_hex = lerp_color(DS.Colors.accent_blue, DS.Colors.accent_violet, i / n)
+            cr, cg, cb = top_hex
+            br, bg, bb = bot_hex
+            painter.setBrush(
+                self._bar_gradient(
+                    f"#{cr:02x}{cg:02x}{cb:02x}",
+                    f"#{br:02x}{bg:02x}{bb:02x}",
+                    x, y, h, alpha
+                )
             )
+            cap = min(bar_w / 2, h / 2)
+            painter.drawRoundedRect(QRectF(x, y, bar_w, h), cap, cap)
             x += bar_w + self.WAVEFORM_GAP
+
+    @staticmethod
+    def _bar_gradient(
+        top_hex: str, bottom_hex: str, x: float, y: float, h: float, alpha: float
+    ) -> QLinearGradient:
+        """Vertical gradient for a single waveform bar (bright top → accent base)."""
+        grad = QLinearGradient(QPointF(x, y), QPointF(x, y + max(h, 1.0)))
+        top = QColor(top_hex)
+        top.setAlphaF(alpha)
+        bottom = QColor(bottom_hex)
+        bottom.setAlphaF(alpha)
+        grad.setColorAt(0.0, top)
+        grad.setColorAt(1.0, bottom)
+        return grad
 
     def _paint_breathing_waveform(self, painter: QPainter, tri_offset: float, cy: float) -> None:
         """Paint diamond waveform for RESPONDING state driven by system audio output."""
@@ -711,14 +782,19 @@ class CompanionWidget(QWidget):
         total_bar_width = self.WAVEFORM_WIDTH - (self.WAVEFORM_GAP * (self.WAVEFORM_BAR_COUNT - 1))
         bar_w = total_bar_width / self.WAVEFORM_BAR_COUNT
 
-        color = QColor(DS.Colors.companion_responding)
-        color.setAlphaF(self._opacity)
-        painter.setBrush(color)
-
         x = tri_offset
         for bar_h in bar_heights:
             y = cy - bar_h / 2
-            painter.drawRoundedRect(
-                QRectF(x, y, bar_w, bar_h), 2, 2
+            painter.setBrush(
+                self._bar_gradient(
+                    DS.Colors.accent_green,
+                    DS.Colors.companion_responding,
+                    x,
+                    y,
+                    bar_h,
+                    self._opacity,
+                )
             )
+            cap = min(bar_w / 2, bar_h / 2)
+            painter.drawRoundedRect(QRectF(x, y, bar_w, bar_h), cap, cap)
             x += bar_w + self.WAVEFORM_GAP

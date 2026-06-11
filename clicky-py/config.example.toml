@@ -80,3 +80,20 @@ voice = "af_heart"
 # Uncomment and set this when using anthropic_worker, assemblyai_worker,
 # or elevenlabs_worker. Deploy the worker/ folder via `wrangler deploy`.
 # worker_url = "https://clicky-win-proxy.your-subdomain.workers.dev"
+
+# ---------------------------------------------------------------------------
+# Viral visual effects — pure eye-candy overlays for screen recordings.
+# ---------------------------------------------------------------------------
+[effects]
+# Power Mode: glowing particle trails, click explosions, screen shake and a
+# combo meter. Start it on launch, or toggle anytime with /power.
+power_mode_enabled = false
+
+# Neon Scan (/scan): a cyberpunk targeting sweep that locks neon boxes onto
+# UI elements. Demo mode synthesises convincing boxes with no screenshot or
+# network. Set to false to use the live vision model (requires a working brain).
+neon_scan_demo = true
+
+# Fireworks + confetti (/celebrate). When true, a celebration also fires
+# automatically each time a guided step-by-step task finishes.
+celebrate_on_success = false

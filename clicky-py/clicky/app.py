@@ -51,11 +51,15 @@ from clicky.ui.annotation_overlay_widget import AnnotationOverlayWidget
 from clicky.ui.arrow_overlay_widget import ArrowOverlayWidget
 from clicky.ui.swarm_overlay_widget import SwarmOverlayWidget
 from clicky.ui.text_input_widget import TextInputWidget
+from clicky.ui.power_mode_widget import PowerModeWidget
+from clicky.ui.celebration_widget import CelebrationWidget
+from clicky.ui.neon_scan_widget import NeonScanWidget
 from clicky.shake_detector import ShakeDetector
 from clicky.ui.tray_icon import TrayIcon
 from clicky.commands.router import CommandContext, CommandRouter
 from clicky.commands.tasks_command import handle_tasks
 from clicky.commands.swarm_command import handle_swarm
+from clicky.commands.effects_command import handle_power, handle_celebrate, handle_scan
 from clicky.ui.tasks_window import TasksWindow
 
 APP_NAME = "ClickyWin"
@@ -140,9 +144,17 @@ def run() -> int:
     tasks_window = TasksWindow()
     swarm_overlay = SwarmOverlayWidget()
 
+    # Viral effect overlays.
+    power_mode = PowerModeWidget()
+    celebration = CelebrationWidget()
+    neon_scan = NeonScanWidget()
+
     router = CommandRouter()
     router.register("tasks", handle_tasks)
     router.register("swarm", handle_swarm)
+    router.register("power", handle_power)
+    router.register("celebrate", handle_celebrate)
+    router.register("scan", handle_scan)
     text_input.set_commands(router.command_names())
 
     companion.fly_started.connect(comet_trail.show_trail)
@@ -174,6 +186,21 @@ def run() -> int:
     tray_icon.show_settings_requested.connect(settings_window.raise_)
     tray_icon.show_history_requested.connect(history.show)
     tray_icon.show_history_requested.connect(history.raise_)
+
+    # Effects menu → overlays.
+    tray_icon.power_mode_toggled.connect(power_mode.toggle)
+    tray_icon.celebrate_requested.connect(lambda: celebration.celebrate())
+
+    def _on_neon_scan_requested() -> None:
+        ctx = CommandContext(
+            companion_manager=_manager[0],
+            companion=companion,
+            neon_scan=neon_scan,
+            config=_cfg[0],
+        )
+        handle_scan("", ctx)
+
+    tray_icon.neon_scan_requested.connect(_on_neon_scan_requested)
 
     hotkey_binding = result.config.hotkey if result.config is not None else "ctrl+alt"
     hotkey_monitor = HotkeyMonitor(binding=hotkey_binding)
@@ -231,6 +258,8 @@ def run() -> int:
 
     # Mutable container so the provider_changed handler can replace the manager
     _manager: list[CompanionManager | None] = [None]
+    # Mutable config holder so command handlers always see the latest settings.
+    _cfg: list[Config | None] = [result.config]
 
     def _build_manager(config: Config) -> CompanionManager | None:
         """Instantiate AI clients and wire a fresh CompanionManager."""
@@ -261,6 +290,13 @@ def run() -> int:
         mgr.steps_complete.connect(
             lambda: QTimer.singleShot(1500, output_widget.fade_and_hide)
         )
+
+        def _maybe_celebrate() -> None:
+            cfg = _cfg[0]
+            if cfg is not None and cfg.celebrate_on_success:
+                celebration.celebrate()
+
+        mgr.steps_complete.connect(_maybe_celebrate)
 
         mgr.response_delta.connect(output_widget.append_delta)
         mgr.step_text.connect(output_widget.set_text)
@@ -368,6 +404,7 @@ def run() -> int:
             # garbage-collected once no more references exist.
             old.deleteLater()
 
+        _cfg[0] = new_config
         _manager[0] = _build_manager(new_config)
         companion.set_lerp_factor(new_config.lerp_factor)
         tray_icon.showMessage(
@@ -386,8 +423,10 @@ def run() -> int:
         except ConfigError as exc:
             logger.error("Config reload failed: %s", exc)
             return
+        _cfg[0] = new_config
         companion.set_lerp_factor(new_config.lerp_factor)
         shake_detector.set_sensitivity(new_config.shake_sensitivity)
+        power_mode.set_enabled(new_config.power_mode_enabled)
         if _manager[0] is not None:
             _manager[0].update_config(new_config)
         tray_icon.showMessage("ClickyWin", "General settings saved.")
@@ -403,6 +442,10 @@ def run() -> int:
             companion_manager=_manager[0],
             companion=companion,
             swarm_overlay=swarm_overlay,
+            power_mode=power_mode,
+            celebration=celebration,
+            neon_scan=neon_scan,
+            config=_cfg[0],
         )
         if router.dispatch(text, ctx):
             return
@@ -423,10 +466,14 @@ def run() -> int:
     tray_icon.show()
     companion.show()
 
+    if result.config is not None and result.config.power_mode_enabled:
+        power_mode.set_enabled(True)
+
     result.app.aboutToQuit.connect(hotkey_monitor.stop)
     result.app.aboutToQuit.connect(companion.hide)
     result.app.aboutToQuit.connect(output_capture.stop)
     result.app.aboutToQuit.connect(shake_detector.stop)
+    result.app.aboutToQuit.connect(lambda: power_mode.set_enabled(False))
 
     loop = qasync.QEventLoop(result.app)
     asyncio.set_event_loop(loop)

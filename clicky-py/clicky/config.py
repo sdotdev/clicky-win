@@ -61,6 +61,10 @@ class Config:
     mouth: MouthConfig
     tts_enabled: bool = field(default=True)
     shake_sensitivity: float = field(default=0.5)
+    # Viral effect toggles
+    power_mode_enabled: bool = field(default=False)
+    neon_scan_demo: bool = field(default=True)
+    celebrate_on_success: bool = field(default=False)
     # Only populated when a *_worker provider is configured
     worker_url: str | None = field(default=None)
 
@@ -130,6 +134,13 @@ class Config:
 
         shake_sensitivity = float(max(0.0, min(1.0, data.get("shake_sensitivity", 0.5))))
 
+        effects = data.get("effects", {})
+        if not isinstance(effects, dict):
+            effects = {}
+        power_mode_enabled = bool(effects.get("power_mode_enabled", False))
+        neon_scan_demo = bool(effects.get("neon_scan_demo", True))
+        celebrate_on_success = bool(effects.get("celebrate_on_success", False))
+
         return cls(
             hotkey=hotkey,
             log_level=log_level,
@@ -140,6 +151,9 @@ class Config:
             mouth=mouth,
             tts_enabled=tts_enabled,
             shake_sensitivity=shake_sensitivity,
+            power_mode_enabled=power_mode_enabled,
+            neon_scan_demo=neon_scan_demo,
+            celebrate_on_success=celebrate_on_success,
             worker_url=worker_url,
         )
 

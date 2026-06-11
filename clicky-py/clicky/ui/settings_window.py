@@ -59,18 +59,139 @@ class SettingsWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _apply_stylesheet(self) -> None:
+        c = DS.Colors
         self.setStyleSheet(f"""
-            QMainWindow, QWidget {{ background-color: {DS.Colors.panel_bg}; color: {DS.Colors.text_primary}; }}
-            QTabWidget::pane {{ border: 1px solid {DS.Colors.border}; }}
-            QTabBar::tab {{ background: {DS.Colors.surface}; color: {DS.Colors.text_secondary}; padding: 6px 16px; }}
-            QTabBar::tab:selected {{ color: {DS.Colors.text_primary}; border-bottom: 2px solid {DS.Colors.accent_blue}; }}
-            QLineEdit, QComboBox, QPlainTextEdit {{ background: {DS.Colors.surface}; color: {DS.Colors.text_primary}; border: 1px solid {DS.Colors.border}; padding: 4px; }}
-            QPushButton {{ background: {DS.Colors.surface}; color: {DS.Colors.text_primary}; border: 1px solid {DS.Colors.border}; padding: 4px 12px; }}
-            QPushButton:hover {{ border-color: {DS.Colors.accent_blue}; }}
-            QGroupBox {{ color: {DS.Colors.text_secondary}; border: 1px solid {DS.Colors.border}; margin-top: 8px; padding-top: 8px; }}
-            QGroupBox::title {{ subcontrol-origin: margin; padding: 0 4px; }}
-            QSlider::groove:horizontal {{ background: {DS.Colors.surface}; height: 4px; }}
-            QSlider::handle:horizontal {{ background: {DS.Colors.accent_blue}; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }}
+            QMainWindow, QWidget {{
+                background-color: {c.bg_deep};
+                color: {c.text_primary};
+                font-family: "Segoe UI";
+                font-size: 13px;
+            }}
+            QLabel {{ background: transparent; color: {c.text_secondary}; }}
+
+            /* --- Tabs --- */
+            QTabWidget::pane {{
+                border: 1px solid {c.border};
+                border-radius: {DS.CornerRadius.medium}px;
+                top: -1px;
+                background: {c.panel_bg};
+            }}
+            QTabBar::tab {{
+                background: transparent;
+                color: {c.text_secondary};
+                padding: 8px 18px;
+                margin-right: 4px;
+                border: none;
+                border-bottom: 2px solid transparent;
+            }}
+            QTabBar::tab:hover {{ color: {c.text_primary}; }}
+            QTabBar::tab:selected {{
+                color: {c.text_primary};
+                border-bottom: 2px solid {c.accent_blue};
+            }}
+
+            /* --- Inputs --- */
+            QLineEdit, QComboBox, QPlainTextEdit {{
+                background: {c.surface};
+                color: {c.text_primary};
+                border: 1px solid {c.border};
+                border-radius: {DS.CornerRadius.small}px;
+                padding: 6px 8px;
+                selection-background-color: {c.accent_blue};
+                selection-color: {c.text_white};
+            }}
+            QLineEdit:hover, QComboBox:hover {{ border-color: {c.border_bright}; }}
+            QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus {{
+                border: 1px solid {c.accent_blue};
+            }}
+            QComboBox::drop-down {{ border: none; width: 22px; }}
+            QComboBox QAbstractItemView {{
+                background: {c.panel_bg_alt};
+                color: {c.text_primary};
+                border: 1px solid {c.border_bright};
+                border-radius: {DS.CornerRadius.small}px;
+                selection-background-color: {c.accent_blue};
+                selection-color: {c.text_white};
+                outline: none;
+            }}
+            QCheckBox {{ background: transparent; color: {c.text_primary}; spacing: 8px; }}
+            QCheckBox::indicator {{
+                width: 16px; height: 16px;
+                border: 1px solid {c.border_bright};
+                border-radius: {DS.CornerRadius.xs}px;
+                background: {c.surface};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {c.accent_blue};
+                border-color: {c.accent_blue};
+            }}
+
+            /* --- Buttons --- */
+            QPushButton {{
+                background: {c.surface};
+                color: {c.text_primary};
+                border: 1px solid {c.border_bright};
+                border-radius: {DS.CornerRadius.small}px;
+                padding: 7px 16px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: {c.surface_hover};
+                border-color: {c.accent_blue};
+                color: {c.text_white};
+            }}
+            QPushButton:pressed {{ background: {c.panel_bg_alt}; }}
+
+            /* --- Group boxes read like cards --- */
+            QGroupBox {{
+                color: {c.text_secondary};
+                background: {c.panel_bg_alt};
+                border: 1px solid {c.border};
+                border-radius: {DS.CornerRadius.medium}px;
+                margin-top: 14px;
+                padding: 14px 12px 10px 12px;
+                font-weight: 600;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                left: 12px;
+                padding: 0 6px;
+                color: {c.accent_blue_bright};
+            }}
+
+            /* --- Sliders --- */
+            QSlider::groove:horizontal {{
+                background: {c.surface};
+                height: 6px;
+                border-radius: 3px;
+            }}
+            QSlider::sub-page:horizontal {{
+                background: {c.accent_blue};
+                height: 6px;
+                border-radius: 3px;
+            }}
+            QSlider::handle:horizontal {{
+                background: {c.accent_blue_bright};
+                border: 2px solid {c.bg_deep};
+                width: 18px; height: 18px;
+                margin: -7px 0;
+                border-radius: 9px;
+            }}
+            QSlider::handle:horizontal:hover {{
+                background: {c.text_white};
+                border-color: {c.accent_blue};
+            }}
+            QSlider::handle:horizontal:pressed {{ background: {c.accent_blue}; }}
+
+            /* --- Scrollbars --- */
+            QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+            QScrollBar::handle:vertical {{
+                background: {c.border_strong};
+                border-radius: 5px;
+                min-height: 28px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
         """)
 
     def _build_ui(self) -> None:
@@ -152,6 +273,24 @@ class SettingsWindow(QMainWindow):
         self._tts_enabled_check = QCheckBox("Enable AI voice responses")
         self._tts_enabled_check.setChecked(True)
         form.addRow("Voice:", self._tts_enabled_check)
+
+        # Viral visual effects
+        effects_group = QGroupBox("Visual Effects")
+        effects_layout = QVBoxLayout(effects_group)
+        effects_layout.setSpacing(6)
+        self._power_mode_check = QCheckBox(
+            "Power Mode on launch — particle cursor, combos, screen shake (/power)"
+        )
+        self._neon_scan_demo_check = QCheckBox(
+            "Neon Scan demo mode — synthetic boxes, no screenshot or AI (/scan)"
+        )
+        self._celebrate_check = QCheckBox(
+            "Fireworks + confetti when a guided task finishes (/celebrate)"
+        )
+        effects_layout.addWidget(self._power_mode_check)
+        effects_layout.addWidget(self._neon_scan_demo_check)
+        effects_layout.addWidget(self._celebrate_check)
+        form.addRow("Effects:", effects_group)
 
         # Save button
         save_btn = QPushButton("Save")
@@ -323,6 +462,12 @@ class SettingsWindow(QMainWindow):
         self._knowledge_dir_edit.setText(data.get("knowledge_dir", ""))
         self._tts_enabled_check.setChecked(bool(data.get("tts_enabled", True)))
 
+        # Effects
+        effects = data.get("effects", {}) if isinstance(data.get("effects"), dict) else {}
+        self._power_mode_check.setChecked(bool(effects.get("power_mode_enabled", False)))
+        self._neon_scan_demo_check.setChecked(bool(effects.get("neon_scan_demo", True)))
+        self._celebrate_check.setChecked(bool(effects.get("celebrate_on_success", False)))
+
         # Models — brain
         brain = data.get("brain", {})
         _set_combo(self._brain_provider, brain.get("provider", "ollama"))
@@ -357,6 +502,10 @@ class SettingsWindow(QMainWindow):
         data["lerp_factor"] = self._lerp_slider.value() / 100
         data["shake_sensitivity"] = self._shake_slider.value() / 100
         data["tts_enabled"] = self._tts_enabled_check.isChecked()
+        effects = data.setdefault("effects", {})
+        effects["power_mode_enabled"] = self._power_mode_check.isChecked()
+        effects["neon_scan_demo"] = self._neon_scan_demo_check.isChecked()
+        effects["celebrate_on_success"] = self._celebrate_check.isChecked()
         kd = self._knowledge_dir_edit.text().strip()
         if kd:
             data["knowledge_dir"] = kd

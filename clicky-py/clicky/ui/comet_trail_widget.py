@@ -6,9 +6,10 @@ import sys
 from collections import deque
 
 from PySide6.QtCore import Property, QEasingCurve, QPointF, QPropertyAnimation, Qt, QTimer
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtGui import QColor, QPainter, QRadialGradient
 from PySide6.QtWidgets import QApplication, QWidget
 
+from clicky.design_system import DS, lerp_color
 from clicky.ui.win32_transparency import apply_win32_transparency
 
 _MAX_TRAIL_PX = 90    # max path length kept in buffer
@@ -126,6 +127,8 @@ class CometTrailWidget(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
 
         op = self._trail_opacity
+        violet = DS.Colors.accent_violet  # tail
+        blue = DS.Colors.accent_blue      # mid
 
         for i, (px, py) in enumerate(self._positions):
             # t=0 at tail, t=1 at head
@@ -137,18 +140,35 @@ class CometTrailWidget(QWidget):
             if alpha < 2:
                 continue
 
-            # Colour: blue → near-white at head
-            r = int(74 + t * (220 - 74))
-            g = int(158 + t * (230 - 158))
-            b = 255
-            painter.setBrush(QColor(r, g, b, alpha))
+            # Colour ramp: violet tail → electric blue → white-hot head.
+            if t < 0.6:
+                cr, cg, cb = lerp_color(violet, blue, t / 0.6)
+            else:
+                cr, cg, cb = lerp_color(blue, "#ffffff", (t - 0.6) / 0.4)
+            painter.setBrush(QColor(cr, cg, cb, alpha))
             painter.drawEllipse(QPointF(px, py), radius, radius)
 
-        # Extra bright tip at head
+        # Soft additive-looking glow halo + white-hot core at the head.
         if n >= 1:
             hx, hy = self._positions[-1]
-            tip_alpha = int(240 * op)
-            painter.setBrush(QColor(240, 248, 255, tip_alpha))
-            painter.drawEllipse(QPointF(hx, hy), 2.5, 2.5)
+            head = QPointF(hx, hy)
+
+            halo_r = _MAX_HEAD_R * 3.2
+            grad = QRadialGradient(head, halo_r)
+            hot = QColor(214, 234, 255)
+            hot.setAlphaF(0.55 * op)
+            mid = QColor(blue)
+            mid.setAlphaF(0.22 * op)
+            edge = QColor(blue)
+            edge.setAlphaF(0.0)
+            grad.setColorAt(0.0, hot)
+            grad.setColorAt(0.4, mid)
+            grad.setColorAt(1.0, edge)
+            painter.setBrush(grad)
+            painter.drawEllipse(head, halo_r, halo_r)
+
+            tip_alpha = int(245 * op)
+            painter.setBrush(QColor(248, 251, 255, tip_alpha))
+            painter.drawEllipse(head, 2.6, 2.6)
 
         painter.end()
